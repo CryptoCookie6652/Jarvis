@@ -63,7 +63,9 @@ async function runTurn(text: string, role: 'user' | 'event'): Promise<string> {
   try {
     const reply = await invoke(text);
     store.addConductorMessage('assistant', reply);
-    bus.broadcast({ kind: 'conductor-say', role: 'assistant', text: reply });
+    // trigger tells the voice layer whether this reply answers the user or
+    // announces an event — announcements get a chime.
+    bus.broadcast({ kind: 'conductor-say', role: 'assistant', text: reply, trigger: role });
     return reply;
   } finally {
     busy = false;

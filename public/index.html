@@ -12,6 +12,23 @@
     <div id="gauge" title="Max plan five-hour window">rate limit: —</div>
   </header>
 
+  <div id="voice-bar">
+    <button id="mic-toggle" type="button">🎙 off</button>
+    <button id="mute-toggle" type="button" title="Toggle Jarvis speech">🔊</button>
+    <label class="hp" title="Keeps the mic hot while Jarvis speaks — only safe on headphones">
+      <input type="checkbox" id="headphones-mode" /> headphones
+    </label>
+    <select id="voice-select" title="Jarvis voice"></select>
+    <select id="voice-lang" title="Recognition language">
+      <option>en-US</option><option>en-GB</option><option>de-DE</option>
+      <option>fr-FR</option><option>es-ES</option><option>pl-PL</option>
+      <option>sv-SE</option><option>nl-NL</option>
+    </select>
+    <input id="voice-rate" type="range" min="0.7" max="1.4" step="0.05" value="1.05" title="Speech rate" />
+    <span id="voice-status">mic off</span>
+    <span id="voice-hearing"></span>
+  </div>
+
   <details id="dispatch-panel">
     <summary>Dispatch a worker</summary>
     <form id="dispatch-form">

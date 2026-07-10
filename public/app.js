@@ -1,3 +1,5 @@
+import { initVoice } from '/voice.js';
+
 const runs = new Map(); // id -> row {id, task, status, started_at, duration_ms, cost_usd, num_turns, lastLine, ...}
 
 const cardsEl = document.getElementById('cards');
@@ -138,10 +140,12 @@ async function init() {
       renderGauge(msg.info);
     } else if (msg.kind === 'conductor-say') {
       addChatMessage(msg.role === 'event' ? 'system' : msg.role, msg.text);
+      if (msg.role === 'assistant') voice.speak(msg.text, { chime: msg.trigger === 'event' });
     } else if (msg.kind === 'conductor-tool') {
       addChatMessage('tool', `⚙ ${msg.name} ${JSON.stringify(msg.input ?? {}).slice(0, 140)}`);
     } else if (msg.kind === 'conductor-status') {
       setThinking(msg.state === 'thinking');
+      voice.setThinking(msg.state === 'thinking');
     }
   };
 }
@@ -166,10 +170,8 @@ function setThinking(on) {
   chatButton.textContent = on ? '…' : 'Send';
 }
 
-async function sendChat() {
-  const text = chatInput.value.trim();
+async function submitText(text) {
   if (!text) return;
-  chatInput.value = '';
   setThinking(true);
   const res = await fetch('/api/conductor/say', {
     method: 'POST',
@@ -182,6 +184,15 @@ async function sendChat() {
     setThinking(false);
   }
   // The reply itself arrives over SSE; conductor-status idle re-enables Send.
+}
+
+const voice = initVoice({ send: submitText });
+
+function sendChat() {
+  const text = chatInput.value.trim();
+  if (!text) return;
+  chatInput.value = '';
+  submitText(text);
 }
 
 chatForm.addEventListener('submit', (event) => {

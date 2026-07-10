@@ -54,6 +54,45 @@ main {
 }
 @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
 
+#voice-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+  margin-bottom: 0.8rem;
+  font-size: 0.8rem;
+  flex-wrap: wrap;
+}
+#voice-bar button {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 0.3rem 0.8rem;
+  cursor: pointer;
+  font: inherit;
+}
+#voice-bar button#mic-toggle.on {
+  border-color: var(--accent);
+  color: var(--accent);
+  animation: pulse 1.6s ease-in-out infinite;
+}
+#voice-bar select, #voice-bar input[type="range"] {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 0.25rem 0.4rem;
+  font: inherit;
+  max-width: 220px;
+}
+#voice-bar .hp { color: var(--dim); display: flex; align-items: center; gap: 0.3rem; }
+#voice-status { color: var(--dim); }
+#voice-hearing { color: var(--accent); font-style: italic; }
+
 #dispatch-panel {
   background: var(--panel);
   border: 1px solid var(--border);
