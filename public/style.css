@@ -247,8 +247,66 @@ main {
 }
 #chat-form button:disabled { opacity: 0.5; cursor: wait; }
 
+.conductor-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  margin-bottom: 0.6rem;
+}
+.conductor-heading h2 { margin-bottom: 0; }
+.conductor-controls { display: flex; align-items: center; gap: 0.5rem; }
+.identity-switch {
+  display: inline-flex;
+  gap: 0.2rem;
+  padding: 0.2rem;
+  background: #0a0e14;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+}
+.identity-option {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 108px;
+  padding: 0.3rem 0.55rem;
+  color: var(--dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+.identity-option:hover:not(:disabled) { color: var(--text); background: #161b22; }
+.identity-option.active {
+  color: var(--text);
+  background: var(--panel);
+  border-color: var(--border);
+  box-shadow: 0 2px 10px rgb(0 0 0 / 25%);
+}
+.identity-option:disabled { cursor: wait; opacity: 0.6; }
+.identity-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--dim);
+  box-shadow: 0 0 8px currentColor;
+}
+.identity-fable .identity-dot { background: #bc8cff; color: #bc8cff; }
+.identity-sol .identity-dot { background: #58d6ff; color: #58d6ff; }
+.identity-copy { display: grid; line-height: 1.05; }
+.identity-copy strong { font-size: 0.72rem; font-weight: 650; }
+.identity-copy small {
+  margin-top: 0.18rem;
+  color: var(--dim);
+  font-size: 0.58rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
 #reset-chat {
-  float: right;
   background: transparent;
   border: 1px solid var(--border);
   color: var(--dim);
@@ -257,6 +315,7 @@ main {
   font-size: 0.72rem;
   cursor: pointer;
 }
+#reset-chat:disabled { opacity: 0.5; cursor: wait; }
 #reset-chat:hover { color: var(--text); border-color: var(--dim); }
 
 #project-tabs { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.7rem; }
@@ -311,3 +370,10 @@ main {
   padding: 0 0.5rem;
 }
 .skill-desc { color: var(--dim); font-size: 0.73rem; margin-left: 1.5rem; }
+
+@media (max-width: 620px) {
+  .conductor-heading { align-items: flex-start; }
+  .conductor-controls { align-items: stretch; }
+  .identity-option { min-width: 0; padding: 0.3rem 0.4rem; }
+  .identity-copy small { display: none; }
+}

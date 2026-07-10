@@ -54,7 +54,7 @@ bus.onRunDone((summary, meta) => {
       bus.broadcast({ kind: 'task-updated', slug: meta.task });
     }
   }
-  if (store.getKV(`conductor_session_${config.conductor?.provider ?? defaultProvider()}`)) {
+  if (conductor.hasSession()) {
     conductor.notify(
       `Worker run ${summary.id}${meta.task ? ` (task "${meta.task}")` : ''} finished with status ${summary.status}.` +
         (summary.resultText ? ` It reported: ${summary.resultText.slice(0, 300)}` : '') +
@@ -96,6 +96,22 @@ const server = createServer(async (req, res) => {
 
     if (url.pathname === '/api/conductor/history' && req.method === 'GET') {
       return json(res, conductor.history());
+    }
+
+    if (url.pathname === '/api/conductor/identity' && req.method === 'GET') {
+      return json(res, conductor.identityState());
+    }
+
+    if (url.pathname === '/api/conductor/identity' && req.method === 'POST') {
+      if (conductor.isBusy()) return json(res, { error: 'busy' }, 409);
+      const body = await readBody(req);
+      const id = typeof body.id === 'string' ? body.id.trim() : '';
+      if (!id) return json(res, { error: 'identity required' }, 400);
+      try {
+        return json(res, conductor.switchIdentity(id));
+      } catch (err) {
+        return json(res, { error: String(err) }, 400);
+      }
     }
 
     if (url.pathname === '/api/conductor/say' && req.method === 'POST') {

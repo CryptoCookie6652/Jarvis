@@ -44,9 +44,13 @@
 
   <main>
     <section id="chat-section">
-      <h2>Conductor
-        <button id="reset-chat" type="button" title="Start a fresh conversation — the outgoing one writes a handoff note first">↺ new</button>
-      </h2>
+      <div class="conductor-heading">
+        <h2>Conductor</h2>
+        <div class="conductor-controls">
+          <div id="identity-switch" class="identity-switch" role="group" aria-label="Choose who acts as Jarvis"></div>
+          <button id="reset-chat" type="button" title="Start a fresh conversation for the active Jarvis identity">↺ new</button>
+        </div>
+      </div>
       <div id="chat"></div>
       <form id="chat-form">
         <textarea name="text" rows="2" placeholder="Talk to Jarvis… (Enter to send)" required></textarea>

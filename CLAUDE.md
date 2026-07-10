@@ -24,6 +24,7 @@ Claude Code workers and reports on them, live and out loud. TypeScript, Node 24,
 - Read-only and write-enabled workers map to Codex `read-only` and `workspace-write` sandboxes.
 - Conductor sessions are namespaced by provider and resume with `codex exec resume`.
 - `AGENTS.md` is the canonical Codex repository guidance; keep its safety invariants aligned with this file.
+- The Conductor UI can switch live between Fable / Opus (Claude) and Sol (Codex); each identity keeps a separate resumable session and receives recent shared context on activation.
 
 ## Vault write rules (non-negotiable — sourced from research into real corruption cases)
 1. Append-only per-run log files under `Runs/`; never rewrite a note the user may have open (Obsidian is last-writer-wins, silently).

@@ -16,14 +16,13 @@ Open `http://localhost:4747`. The manual dispatch form includes an agent-provide
 
 If that port is already in use, set `JARVIS_PORT` before starting (for example, `$env:JARVIS_PORT=4748`).
 
-## Choose a provider
+## Choose worker providers
 
 `jarvis.config.json` contains both provider commands:
 
 - `worker.defaultProvider` controls new workers unless the dashboard request chooses another provider.
-- `conductor.provider` controls the conversational Conductor.
 
-Set either value to `"codex"` or `"claude"`, then restart Jarvis. Provider sessions are stored separately, so switching cannot accidentally resume a session created by the other CLI.
+Set `worker.defaultProvider` to `"codex"` or `"claude"`, then restart Jarvis. The conversational Conductor is selected live through the identity switch below.
 
 Codex workers map Jarvis's write permission to Codex sandboxes:
 
@@ -31,6 +30,15 @@ Codex workers map Jarvis's write permission to Codex sandboxes:
 - Writes on: `workspace-write`
 
 Claude workers retain the original allowed-tool behavior.
+
+## Live Jarvis identity switch
+
+The Conductor header has a live two-way identity switch:
+
+- **Fable / Opus** uses Claude Code with the Opus model.
+- **Sol** uses Codex with its configured default model.
+
+Each identity keeps an independent resumable session. When you switch, Jarvis carries recent shared conversation into the newly active identity, so you can continue without restarting the server or repeating context. The active identity persists across restarts.
 
 ## Important paths
 

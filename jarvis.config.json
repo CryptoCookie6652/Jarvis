@@ -15,5 +15,11 @@
       }
     }
   },
-  "conductor": { "provider": "codex" }
+  "conductor": {
+    "defaultIdentity": "sol",
+    "identities": {
+      "fable": { "label": "Fable / Opus", "provider": "claude", "model": "opus" },
+      "sol": { "label": "Sol", "provider": "codex" }
+    }
+  }
 }

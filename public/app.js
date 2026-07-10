@@ -16,10 +16,12 @@ const tasksEl = document.getElementById('tasks');
 const taskProgressEl = document.getElementById('task-progress');
 const skillsEl = document.getElementById('skills');
 const resetBtn = document.getElementById('reset-chat');
+const identitySwitchEl = document.getElementById('identity-switch');
 
 let selectedProject = 'all';
 let projects = [];
 let taskList = [];
+let conductorBusy = false;
 
 const STATUS_ICON = {
   todo: '⬜', dispatched: '📤', running: '🔄', review: '👀', done: '✅', failed: '❌',
@@ -104,6 +106,38 @@ async function loadProjectsAndTasks() {
 async function loadSkills() {
   renderSkills(await fetch('/api/skills').then((r) => r.json()));
 }
+
+function renderIdentity(state) {
+  identitySwitchEl.innerHTML = state.options
+    .map((option) => {
+      const active = option.id === state.active;
+      const detail = option.model ? `${option.provider} · ${option.model}` : option.provider;
+      return `<button type="button" class="identity-option identity-${esc(option.id)}${active ? ' active' : ''}"
+        data-identity="${esc(option.id)}" aria-pressed="${active}" ${state.busy || conductorBusy ? 'disabled' : ''}>
+        <span class="identity-dot"></span>
+        <span class="identity-copy"><strong>${esc(option.label)}</strong><small>${esc(detail)}</small></span>
+      </button>`;
+    })
+    .join('');
+}
+
+identitySwitchEl.addEventListener('click', async (event) => {
+  const button = event.target.closest('button[data-identity]');
+  if (!button || button.classList.contains('active') || conductorBusy) return;
+  for (const option of identitySwitchEl.querySelectorAll('button')) option.disabled = true;
+  const response = await fetch('/api/conductor/identity', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: button.dataset.identity }),
+  });
+  const state = await response.json().catch(() => ({}));
+  if (response.ok) renderIdentity(state);
+  else {
+    addChatMessage('system', `switch failed: ${state.error ?? response.status}`);
+    const current = await fetch('/api/conductor/identity').then((result) => result.json());
+    renderIdentity(current);
+  }
+});
 
 tabsEl.addEventListener('click', (event) => {
   const tab = event.target.closest('button.tab');
@@ -206,7 +240,11 @@ function renderGauge(info) {
 }
 
 async function init() {
-  const meta = await fetch('/api/meta').then((r) => r.json());
+  const [meta, identity] = await Promise.all([
+    fetch('/api/meta').then((r) => r.json()),
+    fetch('/api/conductor/identity').then((r) => r.json()),
+  ]);
+  renderIdentity(identity);
   form.querySelector('[name=cwd]').value = meta.defaultCwd;
   const providerSelect = form.querySelector('[name=provider]');
   providerSelect.innerHTML = (meta.providers ?? [meta.defaultProvider])
@@ -258,6 +296,8 @@ async function init() {
     } else if (msg.kind === 'conductor-status') {
       setThinking(msg.state === 'thinking');
       voice.setThinking(msg.state === 'thinking');
+    } else if (msg.kind === 'conductor-identity') {
+      renderIdentity(msg);
     } else if (msg.kind === 'task-created' || msg.kind === 'task-updated') {
       loadProjectsAndTasks();
     }
@@ -280,8 +320,11 @@ function addChatMessage(role, text) {
 }
 
 function setThinking(on) {
+  conductorBusy = on;
   chatButton.disabled = on;
   chatButton.textContent = on ? '…' : 'Send';
+  for (const option of identitySwitchEl.querySelectorAll('button')) option.disabled = on;
+  resetBtn.disabled = on;
 }
 
 async function submitText(text) {

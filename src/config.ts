@@ -17,6 +17,8 @@ export interface JarvisConfig {
   };
   conductor?: {
     provider?: AgentProvider;
+    defaultIdentity?: string;
+    identities?: Record<string, ConductorIdentityConfig>;
   };
 }
 
@@ -25,6 +27,12 @@ export type AgentProvider = 'claude' | 'codex';
 export interface AgentCommandConfig {
   command: string;
   baseArgs: string[];
+}
+
+export interface ConductorIdentityConfig {
+  label: string;
+  provider: AgentProvider;
+  model?: string;
 }
 
 export const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -45,6 +53,21 @@ export function defaultProvider(): AgentProvider {
 
 export function conductorProvider(): AgentProvider {
   return config.conductor?.provider ?? defaultProvider();
+}
+
+export function conductorIdentities(): Record<string, ConductorIdentityConfig> {
+  return config.conductor?.identities ?? {
+    fable: { label: 'Fable / Opus', provider: 'claude', model: 'opus' },
+    sol: { label: 'Sol', provider: 'codex' },
+  };
+}
+
+export function defaultConductorIdentity(): string {
+  const identities = conductorIdentities();
+  const configured = config.conductor?.defaultIdentity;
+  if (configured && identities[configured]) return configured;
+  const provider = conductorProvider();
+  return Object.keys(identities).find((id) => identities[id].provider === provider) ?? Object.keys(identities)[0];
 }
 
 export function agentCommand(provider = defaultProvider()): AgentCommandConfig {
