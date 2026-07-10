@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { extname, join, normalize, sep } from 'node:path';
+import { existsSync, statSync } from 'node:fs';
+import { extname, isAbsolute, join, normalize, sep } from 'node:path';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { availableProviders, config, defaultProvider, projectRoot, serverPort, type AgentProvider } from '../config.js';
 import * as store from '../store/db.js';
@@ -9,7 +10,7 @@ import * as bus from './bus.js';
 import { createMcpServer } from '../conductor/tools.js';
 import * as conductor from '../conductor/session.js';
 import * as tasks from '../vault/tasks.js';
-import { listProjects } from '../vault/projects.js';
+import { listProjects, registerProjectDirectory } from '../vault/projects.js';
 import { listSkills, seedSkills, toggleSkill } from '../vault/skills.js';
 import { renderBoard } from '../vault/board.js';
 
@@ -174,6 +175,23 @@ const server = createServer(async (req, res) => {
           };
         }),
       );
+    }
+
+    if (url.pathname === '/api/projects' && req.method === 'POST') {
+      const body = await readBody(req);
+      const name = typeof body.name === 'string' ? body.name.trim() : '';
+      const cwd = typeof body.cwd === 'string' ? body.cwd.trim() : '';
+      if (!name || !cwd) return json(res, { error: 'name and directory are required' }, 400);
+      if (!/^[\w -]+$/.test(name)) return json(res, { error: 'project name contains unsupported characters' }, 400);
+      if (!isAbsolute(cwd) || !existsSync(cwd) || !statSync(cwd).isDirectory()) {
+        return json(res, { error: 'directory must be an existing absolute path' }, 400);
+      }
+      try {
+        const project = registerProjectDirectory(name, cwd);
+        return json(res, { ok: true, project });
+      } catch (err) {
+        return json(res, { error: String(err) }, 409);
+      }
     }
 
     if (url.pathname === '/api/tasks' && req.method === 'GET') {

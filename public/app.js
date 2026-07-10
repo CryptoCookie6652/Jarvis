@@ -19,11 +19,18 @@ const resetBtn = document.getElementById('reset-chat');
 const identitySwitchEl = document.getElementById('identity-switch');
 const conductorModelSelect = document.getElementById('conductor-model');
 const conductorEffortSelect = document.getElementById('conductor-effort');
+const workspaceTabsEl = document.querySelector('.workspace-tabs');
+const projectsViewEl = document.getElementById('projects-view');
+const agentsViewEl = document.getElementById('agents-view');
+const projectListEl = document.getElementById('project-list');
+const projectForm = document.getElementById('project-form');
+const projectStatusEl = document.getElementById('project-status');
 
 let selectedProject = 'all';
 let projects = [];
 let taskList = [];
 let conductorBusy = false;
+let workspaceView = 'projects';
 
 const STATUS_ICON = {
   todo: '⬜', dispatched: '📤', running: '🔄', review: '👀', done: '✅', failed: '❌',
@@ -101,12 +108,79 @@ async function loadProjectsAndTasks() {
   projects = p;
   taskList = t;
   renderTabs();
+  renderProjects();
   renderTasks();
   renderCards();
 }
 
+workspaceTabsEl.addEventListener('click', (event) => {
+  const tab = event.target.closest('[data-workspace-view]');
+  if (!tab) return;
+  setWorkspaceView(tab.dataset.workspaceView);
+});
+
+projectForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const data = new FormData(projectForm);
+  projectStatusEl.textContent = 'adding…';
+  const response = await fetch('/api/projects', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: data.get('name'), cwd: data.get('cwd') }),
+  });
+  const result = await response.json().catch(() => ({}));
+  projectStatusEl.textContent = response.ok ? 'project added' : `error: ${result.error ?? response.status}`;
+  if (response.ok) {
+    projectForm.reset();
+    await loadProjectsAndTasks();
+  }
+});
+
+projectListEl.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-use-project]');
+  if (!button || !button.dataset.projectCwd) return;
+  form.querySelector('[name=cwd]').value = button.dataset.projectCwd;
+  form.querySelector('[name=project]').value = button.dataset.useProject;
+  selectedProject = button.dataset.useProject;
+  setWorkspaceView('agents');
+  renderTabs();
+  renderTasks();
+  renderCards();
+});
+
 async function loadSkills() {
   renderSkills(await fetch('/api/skills').then((r) => r.json()));
+}
+
+function setWorkspaceView(view) {
+  workspaceView = view;
+  projectsViewEl.hidden = view !== 'projects';
+  agentsViewEl.hidden = view !== 'agents';
+  for (const tab of workspaceTabsEl.querySelectorAll('[data-workspace-view]')) {
+    const active = tab.dataset.workspaceView === view;
+    tab.classList.toggle('active', active);
+    tab.setAttribute('aria-selected', String(active));
+  }
+}
+
+function renderProjects() {
+  projectListEl.innerHTML = projects.length
+    ? projects
+        .map(
+          (project) => `<article class="project-card${project.cwd ? '' : ' unlinked'}">
+            <div class="project-card-head">
+              <div>
+                <strong>${esc(project.name)}</strong>
+                <span class="project-status status-${esc(project.status)}">${esc(project.status)}</span>
+              </div>
+              <span class="project-progress">${project.done}/${project.total} tasks</span>
+            </div>
+            <code>${project.cwd ? esc(project.cwd) : 'No directory linked'}</code>
+            <button type="button" data-use-project="${esc(project.name)}" data-project-cwd="${esc(project.cwd ?? '')}" ${project.cwd ? '' : 'disabled'}>Use project</button>
+          </article>`,
+        )
+        .join('')
+    : '<div class="project-empty">No projects yet. Add the first project above.</div>';
 }
 
 function renderIdentity(state) {
@@ -275,6 +349,7 @@ form.addEventListener('submit', async (event) => {
     body: JSON.stringify({
       task: data.get('task') || undefined,
       cwd: data.get('cwd'),
+      project: data.get('project') || undefined,
       prompt: data.get('prompt'),
       provider: data.get('provider') || undefined,
       allowedTools: allowWrite ? ['Read', 'Glob', 'Grep', 'Write', 'Edit'] : undefined,

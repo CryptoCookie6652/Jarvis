@@ -34,6 +34,7 @@
     <form id="dispatch-form">
       <label>Task name <input name="task" placeholder="what is this run called" /></label>
       <label>Working directory <input name="cwd" required /></label>
+      <label>Project <input name="project" placeholder="optional project name" /></label>
       <label>Prompt <textarea name="prompt" rows="4" required placeholder="what should the worker do"></textarea></label>
       <label>Agent provider <select name="provider" id="provider-select"></select></label>
       <label class="row"><input type="checkbox" name="allowWrite" /> allow file writes (Write/Edit)</label>
@@ -65,14 +66,28 @@
         <button type="submit">Send</button>
       </form>
     </section>
-    <section>
-      <h2>Agents</h2>
-      <div id="project-tabs"></div>
-      <div id="cards"></div>
-      <details id="tasks-panel" open>
-        <summary>Tasks <span id="task-progress"></span></summary>
-        <div id="tasks"></div>
-      </details>
+    <section id="workspace-section">
+      <nav class="workspace-tabs" aria-label="Workspace views">
+        <button type="button" class="workspace-tab active" data-workspace-view="projects">Projects</button>
+        <button type="button" class="workspace-tab" data-workspace-view="agents">Agents</button>
+      </nav>
+      <div id="projects-view" class="workspace-view">
+        <form id="project-form" class="project-form">
+          <input name="name" aria-label="Project name" placeholder="Project name" required />
+          <input name="cwd" aria-label="Project directory" placeholder="C:\path\to\project" required />
+          <button type="submit">Add project</button>
+          <span id="project-status"></span>
+        </form>
+        <div id="project-list"></div>
+      </div>
+      <div id="agents-view" class="workspace-view" hidden>
+        <div id="project-tabs"></div>
+        <div id="cards"></div>
+        <details id="tasks-panel" open>
+          <summary>Tasks <span id="task-progress"></span></summary>
+          <div id="tasks"></div>
+        </details>
+      </div>
     </section>
     <section>
       <h2>Live feed</h2>

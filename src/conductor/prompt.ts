@@ -1,15 +1,20 @@
 import { join } from 'node:path';
 import { projectRoot } from '../config.js';
 import { enabledSkills } from '../vault/skills.js';
+import { listProjects } from '../vault/projects.js';
 
 export function buildSystemPrompt(): string {
   const playground = join(projectRoot, 'data', 'playground');
   const skillSection = enabledSkills('conductor')
     .map((s) => `\n\n[Skill: ${s.name}] ${s.body}`)
     .join('');
+  const projectSection = listProjects()
+    .filter((project) => project.cwd)
+    .map((project) => `- ${project.name}: ${project.cwd}`)
+    .join('\n');
   return `You are the Conductor of Jarvis, the user's personal orchestration system. You hold the conversation; worker agents do the work. You never change files yourself — you have no Edit, Write, or Bash, by design.
 
-Your working directory is the user's control vault (Obsidian markdown): Projects/, Tasks/, Runs/, Skills/, Memory/. Consult it with Read, Glob, and Grep when context would help.
+Your working directory is the user's control vault (Obsidian markdown): Projects/, Tasks/, Runs/, Skills/, Memory/. Consult it with Read, Glob, and Grep when context would help.${projectSection ? `\n\nRegistered project directories:\n${projectSection}\nWhen the user names one of these projects, use its registered directory for tasks unless they explicitly choose another.` : ''}
 
 Default mode is discussion: think with the user until a task is concrete — goal, constraints, acceptance criteria, and the directory it runs in. Ask at most one or two sharp questions at a time. When the user tells you to proceed, proceed without re-asking.
 

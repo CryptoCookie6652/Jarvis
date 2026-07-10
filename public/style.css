@@ -126,6 +126,86 @@ main {
 
 #cards { display: grid; gap: 0.8rem; }
 
+.workspace-tabs {
+  display: flex;
+  gap: 0.35rem;
+  padding-bottom: 0.55rem;
+  margin-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+.workspace-tab {
+  padding: 0.35rem 0.85rem;
+  color: var(--dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  font: 600 0.76rem "Segoe UI", system-ui, sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+.workspace-tab:hover { color: var(--text); background: var(--panel); }
+.workspace-tab.active { color: var(--accent); background: var(--panel); border-color: var(--border); }
+.workspace-view[hidden] { display: none; }
+
+.project-form {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.7fr) minmax(180px, 1.5fr) auto;
+  gap: 0.45rem;
+  margin-bottom: 0.8rem;
+}
+.project-form input {
+  min-width: 0;
+  padding: 0.42rem 0.55rem;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: 0.75rem "Segoe UI", system-ui, sans-serif;
+}
+.project-form button, .project-card button {
+  padding: 0.4rem 0.75rem;
+  color: #04121f;
+  background: var(--accent);
+  border: 0;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+#project-status { grid-column: 1 / -1; color: var(--dim); font-size: 0.7rem; }
+#project-list { display: grid; gap: 0.7rem; }
+.project-card {
+  display: grid;
+  gap: 0.6rem;
+  padding: 0.75rem 0.85rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+}
+.project-card.unlinked { border-left-color: var(--amber); }
+.project-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.6rem; }
+.project-card-head > div { display: flex; align-items: baseline; gap: 0.5rem; }
+.project-card-head strong { font-size: 0.9rem; }
+.project-status {
+  color: var(--green);
+  font-size: 0.63rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.project-progress { color: var(--dim); font-size: 0.7rem; }
+.project-card code {
+  overflow: hidden;
+  color: var(--dim);
+  font-size: 0.7rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.project-card button { justify-self: start; }
+.project-card button:disabled { color: var(--dim); background: var(--border); cursor: not-allowed; }
+.project-empty { padding: 1rem; color: var(--dim); text-align: center; font-size: 0.8rem; }
+
 .card {
   background: var(--panel);
   border: 1px solid var(--border);
@@ -402,4 +482,6 @@ main {
   .identity-copy small { display: none; }
   .model-picker select { min-width: 125px; max-width: 150px; }
   .effort-picker select { min-width: 90px; max-width: 105px; }
+  .project-form { grid-template-columns: 1fr; }
+  #project-status { grid-column: auto; }
 }

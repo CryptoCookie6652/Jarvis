@@ -14,6 +14,8 @@ npm run dev
 
 Open `http://localhost:4747`. The manual dispatch form includes an agent-provider selector.
 
+The Projects tab registers named project directories in the vault. Choose **Use project** to prefill the dispatch directory and associate new runs with that project.
+
 If that port is already in use, set `JARVIS_PORT` before starting (for example, `$env:JARVIS_PORT=4748`).
 
 ## Choose worker providers

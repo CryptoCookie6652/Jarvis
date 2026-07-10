@@ -35,6 +35,7 @@ Jarvis is a local, voice-driven agent orchestrator. The Conductor holds the conv
 - Write one summary note per completed task.
 - Validate YAML frontmatter. Use spaces for indentation and quote values containing colons or brackets.
 - Never rename or move vault files from application code.
+- Existing project notes gain directory links through append-only body metadata; do not rewrite them to add a directory.
 - Keep the vault out of synced folders such as OneDrive, iCloud, or Obsidian Sync.
 
 ## Conductor safety invariant
