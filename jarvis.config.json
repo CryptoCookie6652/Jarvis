@@ -3,7 +3,17 @@
   "dbPath": "./data/jarvis.db",
   "server": { "port": 4747 },
   "worker": {
-    "command": "claude",
-    "baseArgs": ["-p", "--output-format", "stream-json", "--verbose"]
-  }
+    "defaultProvider": "codex",
+    "providers": {
+      "codex": {
+        "command": "codex",
+        "baseArgs": ["exec", "--json", "--skip-git-repo-check"]
+      },
+      "claude": {
+        "command": "claude",
+        "baseArgs": ["-p", "--output-format", "stream-json", "--verbose"]
+      }
+    }
+  },
+  "conductor": { "provider": "codex" }
 }

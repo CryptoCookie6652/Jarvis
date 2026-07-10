@@ -59,11 +59,41 @@ export interface ResultEvent extends BaseEvent {
   usage?: Usage;
 }
 
+export interface CodexThreadStartedEvent extends BaseEvent {
+  type: 'thread.started';
+  thread_id: string;
+}
+
+export interface CodexItemEvent extends BaseEvent {
+  type: 'item.started' | 'item.updated' | 'item.completed';
+  item: {
+    id?: string;
+    type: string;
+    text?: string;
+    command?: string;
+    status?: string;
+    [key: string]: unknown;
+  };
+}
+
+export interface CodexTurnCompletedEvent extends BaseEvent {
+  type: 'turn.completed';
+  usage?: {
+    input_tokens?: number;
+    cached_input_tokens?: number;
+    output_tokens?: number;
+    reasoning_output_tokens?: number;
+  };
+}
+
 export type WorkerEvent =
   | SystemInitEvent
   | AssistantEvent
   | RateLimitEvent
   | ResultEvent
+  | CodexThreadStartedEvent
+  | CodexItemEvent
+  | CodexTurnCompletedEvent
   | (BaseEvent & Record<string, unknown>);
 
 export function isInit(ev: WorkerEvent): ev is SystemInitEvent {

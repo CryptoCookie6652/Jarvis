@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { randomBytes } from 'node:crypto';
-import { config } from '../config.js';
+import { agentCommand, defaultProvider, type AgentProvider } from '../config.js';
 import { createLineParser } from './parser.js';
 import { isAssistant, isInit, isResult, type ResultEvent, type WorkerEvent } from './events.js';
 import * as store from '../store/db.js';
@@ -16,6 +16,7 @@ export interface RunOptions {
   model?: string;
   worktree?: string; // pass-through; first real use comes in M3
   timeoutMs?: number;
+  provider?: AgentProvider;
 }
 
 export interface RunSummary {
@@ -80,6 +81,19 @@ function digest(ev: WorkerEvent): string[] {
     }
     return lines;
   }
+  if (ev.type === 'item.completed' && 'item' in ev) {
+    const item = ev.item as { type?: string; text?: string; command?: string; status?: string };
+    if (item.type === 'agent_message' && item.text) {
+      return [`- ${timestamp()} said: ${clean(item.text, 300)}`];
+    }
+    if (item.type === 'command_execution' && item.command) {
+      return [`- ${timestamp()} command **${clean(item.command, 180)}**${item.status ? ` — ${item.status}` : ''}`];
+    }
+    if (item.type === 'mcp_tool_call') {
+      const name = String((ev.item as Record<string, unknown>).tool ?? 'MCP tool');
+      return [`- ${timestamp()} tool **${clean(name, 120)}**`];
+    }
+  }
   return [];
 }
 
@@ -100,15 +114,23 @@ export function startRun(opts: RunOptions): RunHandle {
     cwd: opts.cwd,
   });
 
-  const args = [...config.worker.baseArgs];
-  if (opts.allowedTools?.length) args.push('--allowedTools', opts.allowedTools.join(','));
-  if (opts.model) args.push('--model', opts.model);
-  if (opts.worktree) args.push('--worktree', opts.worktree);
+  const provider = opts.provider ?? defaultProvider();
+  const command = agentCommand(provider);
+  const args = [...command.baseArgs];
+  if (provider === 'claude') {
+    if (opts.allowedTools?.length) args.push('--allowedTools', opts.allowedTools.join(','));
+    if (opts.model) args.push('--model', opts.model);
+    if (opts.worktree) args.push('--worktree', opts.worktree);
+  } else {
+    const allowWrites = opts.allowedTools?.some((tool) => tool === 'Write' || tool === 'Edit') ?? false;
+    args.push('--sandbox', allowWrites ? 'workspace-write' : 'read-only');
+    if (opts.model) args.push('--model', opts.model);
+    args.push('-');
+  }
 
-  // claude resolves to a native .exe, so no shell is needed. The prompt goes in
-  // via stdin: no Windows arg-length limit, and closing stdin immediately skips
-  // the CLI's 3-second wait for piped input.
-  const child = spawn(config.worker.command, args, {
+  // Both provider CLIs resolve to native executables, so no shell is needed.
+  // The prompt goes through stdin to avoid Windows argument-length limits.
+  const child = spawn(command.command, args, {
     cwd: opts.cwd,
     stdio: ['pipe', 'pipe', 'pipe'],
     windowsHide: true,
@@ -117,6 +139,11 @@ export function startRun(opts: RunOptions): RunHandle {
 
   let sessionId: string | null = null;
   let resultEvent: ResultEvent | null = null;
+  let codexCompleted = false;
+  let codexResult: string | null = null;
+  let codexInputTokens: number | null = null;
+  let codexOutputTokens: number | null = null;
+  const startedAt = Date.now();
   let killedAs: 'cancelled' | 'timeout' | null = null;
   const stderrChunks: string[] = [];
 
@@ -128,6 +155,20 @@ export function startRun(opts: RunOptions): RunHandle {
         store.runStarted(id, sessionId, ev.model);
       }
       if (isResult(ev)) resultEvent = ev;
+      if (ev.type === 'thread.started' && 'thread_id' in ev) {
+        sessionId = String(ev.thread_id);
+        store.runStarted(id, sessionId, opts.model ?? null);
+      }
+      if (ev.type === 'item.completed' && 'item' in ev) {
+        const item = ev.item as { type?: string; text?: string };
+        if (item.type === 'agent_message' && item.text) codexResult = item.text;
+      }
+      if (ev.type === 'turn.completed') {
+        codexCompleted = true;
+        const usage = (ev as { usage?: { input_tokens?: number; output_tokens?: number } }).usage;
+        codexInputTokens = usage?.input_tokens ?? null;
+        codexOutputTokens = usage?.output_tokens ?? null;
+      }
       for (const line of digest(ev)) {
         vault.appendRunNote(id, line);
         emitter.emit('digest', line);
@@ -166,7 +207,7 @@ export function startRun(opts: RunOptions): RunHandle {
       if (killedAs) {
         status = killedAs;
         error = killedAs === 'timeout' ? 'watchdog timeout' : 'cancelled by user';
-      } else if (resultEvent && !resultEvent.is_error) {
+      } else if ((resultEvent && !resultEvent.is_error) || codexCompleted) {
         status = 'done';
       } else {
         status = 'failed';
@@ -180,10 +221,10 @@ export function startRun(opts: RunOptions): RunHandle {
         id,
         status,
         sessionId,
-        durationMs: resultEvent?.duration_ms ?? null,
-        numTurns: resultEvent?.num_turns ?? null,
+        durationMs: resultEvent?.duration_ms ?? (codexCompleted ? Date.now() - startedAt : null),
+        numTurns: resultEvent?.num_turns ?? (codexCompleted ? 1 : null),
         costUsd: resultEvent?.total_cost_usd ?? null,
-        resultText: resultEvent?.result ?? null,
+        resultText: resultEvent?.result ?? codexResult,
         error,
         notePath,
       };
@@ -193,8 +234,8 @@ export function startRun(opts: RunOptions): RunHandle {
         durationMs: summary.durationMs,
         numTurns: summary.numTurns,
         costUsd: summary.costUsd,
-        inputTokens: resultEvent?.usage?.input_tokens ?? null,
-        outputTokens: resultEvent?.usage?.output_tokens ?? null,
+        inputTokens: resultEvent?.usage?.input_tokens ?? codexInputTokens,
+        outputTokens: resultEvent?.usage?.output_tokens ?? codexOutputTokens,
         resultText: summary.resultText,
         error,
       });

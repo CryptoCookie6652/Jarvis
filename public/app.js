@@ -190,6 +190,7 @@ form.addEventListener('submit', async (event) => {
       task: data.get('task') || undefined,
       cwd: data.get('cwd'),
       prompt: data.get('prompt'),
+      provider: data.get('provider') || undefined,
       allowedTools: allowWrite ? ['Read', 'Glob', 'Grep', 'Write', 'Edit'] : undefined,
     }),
   });
@@ -207,6 +208,10 @@ function renderGauge(info) {
 async function init() {
   const meta = await fetch('/api/meta').then((r) => r.json());
   form.querySelector('[name=cwd]').value = meta.defaultCwd;
+  const providerSelect = form.querySelector('[name=provider]');
+  providerSelect.innerHTML = (meta.providers ?? [meta.defaultProvider])
+    .map((provider) => `<option value="${esc(provider)}"${provider === meta.defaultProvider ? ' selected' : ''}>${esc(provider)}</option>`)
+    .join('');
 
   const history = await fetch('/api/runs').then((r) => r.json());
   for (const row of history) runs.set(row.id, row);

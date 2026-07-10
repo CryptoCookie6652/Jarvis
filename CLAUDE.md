@@ -1,10 +1,10 @@
-# Jarvis — voice-driven Claude Code orchestrator (personal use)
+# Jarvis — voice-driven Codex and Claude Code orchestrator (personal use)
 
-A local app: a conversational "Conductor" (voice in M4) dispatches headless Claude Code
-workers and reports on them, live and out loud. TypeScript, Node 24, minimal dependencies.
+A local app: a conversational "Conductor" (voice in M4) dispatches headless Codex or
+Claude Code workers and reports on them, live and out loud. TypeScript, Node 24, minimal dependencies.
 
 ## Layout
-- `src/engine/` — spawn workers (`claude -p --output-format stream-json --verbose --worktree`), parse the JSON-lines event stream
+- `src/engine/` — spawn Codex or Claude workers and normalize their JSON-lines event streams
 - `src/store/` — SQLite via built-in `node:sqlite` (no native deps): event firehose, run history, kv, chat log
 - `src/vault/` — vault writes: notes (frontmatter emit/parse), tasks, projects, skills, board (app-generated Board.md)
 - `src/conductor/` — session (resumed claude -p, handoff-on-reset), prompt, MCP tools (write_task, dispatch_agent, agent_status/log/cancel, remember)
@@ -18,6 +18,12 @@ workers and reports on them, live and out loud. TypeScript, Node 24, minimal dep
 - `--verbose` is required with `-p --output-format stream-json`.
 - Event types observed: `system` (subtypes incl. `init`, `hook_started`), `assistant`, `rate_limit_event` (five-hour window status — surface this in the dashboard), `result` (duration_ms, ttft_ms, num_turns, total_cost_usd estimate, session_id, usage).
 - Worker startup is ~2.5s once the stdin wait is removed.
+
+## Codex compatibility (added 2026-07-10)
+- Codex runs through `codex exec --json`; its event stream is normalized alongside Claude events.
+- Read-only and write-enabled workers map to Codex `read-only` and `workspace-write` sandboxes.
+- Conductor sessions are namespaced by provider and resume with `codex exec resume`.
+- `AGENTS.md` is the canonical Codex repository guidance; keep its safety invariants aligned with this file.
 
 ## Vault write rules (non-negotiable — sourced from research into real corruption cases)
 1. Append-only per-run log files under `Runs/`; never rewrite a note the user may have open (Obsidian is last-writer-wins, silently).

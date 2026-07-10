@@ -35,6 +35,7 @@
       <label>Task name <input name="task" placeholder="what is this run called" /></label>
       <label>Working directory <input name="cwd" required /></label>
       <label>Prompt <textarea name="prompt" rows="4" required placeholder="what should the worker do"></textarea></label>
+      <label>Agent provider <select name="provider" id="provider-select"></select></label>
       <label class="row"><input type="checkbox" name="allowWrite" /> allow file writes (Write/Edit)</label>
       <button type="submit">Dispatch</button>
       <span id="dispatch-status"></span>

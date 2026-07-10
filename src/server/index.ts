@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize, sep } from 'node:path';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { config, projectRoot } from '../config.js';
+import { availableProviders, config, defaultProvider, projectRoot, serverPort, type AgentProvider } from '../config.js';
 import * as store from '../store/db.js';
 import { startRun } from '../engine/run.js';
 import * as bus from './bus.js';
@@ -13,7 +13,7 @@ import { listProjects } from '../vault/projects.js';
 import { listSkills, seedSkills, toggleSkill } from '../vault/skills.js';
 import { renderBoard } from '../vault/board.js';
 
-const PORT = config.server?.port ?? 4747;
+const PORT = serverPort();
 const publicDir = join(projectRoot, 'public');
 
 const MIME: Record<string, string> = {
@@ -54,7 +54,7 @@ bus.onRunDone((summary, meta) => {
       bus.broadcast({ kind: 'task-updated', slug: meta.task });
     }
   }
-  if (store.getKV('conductor_session')) {
+  if (store.getKV(`conductor_session_${config.conductor?.provider ?? defaultProvider()}`)) {
     conductor.notify(
       `Worker run ${summary.id}${meta.task ? ` (task "${meta.task}")` : ''} finished with status ${summary.status}.` +
         (summary.resultText ? ` It reported: ${summary.resultText.slice(0, 300)}` : '') +
@@ -162,6 +162,8 @@ const server = createServer(async (req, res) => {
       return json(res, {
         defaultCwd: join(projectRoot, 'data', 'playground'),
         vaultPath: config.vaultPath,
+        defaultProvider: defaultProvider(),
+        providers: availableProviders(),
       });
     }
 
@@ -185,6 +187,10 @@ const server = createServer(async (req, res) => {
           ? (body.allowedTools as string[])
           : ['Read', 'Glob', 'Grep'],
         model: typeof body.model === 'string' && body.model ? body.model : undefined,
+        provider:
+          typeof body.provider === 'string' && availableProviders().includes(body.provider as AgentProvider)
+            ? (body.provider as AgentProvider)
+            : undefined,
       });
       bus.track(handle, {
         task: typeof body.task === 'string' ? body.task : undefined,

@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { config } from '../config.js';
+import { agentCommand, conductorProvider, config, serverPort } from '../config.js';
 import { createLineParser } from '../engine/parser.js';
 import { isAssistant, isInit, isResult, type ResultEvent } from '../engine/events.js';
 import { killTree } from '../engine/run.js';
@@ -15,11 +15,13 @@ import { buildSystemPrompt } from './prompt.js';
 // queue while busy and flush — coalesced into one turn — the moment the
 // conductor goes idle.
 
-const PORT = config.server?.port ?? 4747;
+const PORT = serverPort();
 const MCP_CONFIG = JSON.stringify({
   mcpServers: { jarvis: { type: 'http', url: `http://localhost:${PORT}/mcp` } },
 });
 const ALLOWED_TOOLS = 'mcp__jarvis,Read,Glob,Grep';
+const PROVIDER = conductorProvider();
+const SESSION_KEY = `conductor_session_${PROVIDER}`;
 
 let busy = false;
 const pendingNotices: string[] = [];
@@ -59,7 +61,7 @@ async function flushNotices() {
 // session id so the next turn starts fresh with the handoff injected.
 export async function reset(): Promise<string> {
   if (busy) throw new Error('conductor is busy');
-  const sessionId = store.getKV('conductor_session');
+  const sessionId = store.getKV(SESSION_KEY);
   let handoff = '';
   if (sessionId) {
     busy = true;
@@ -77,7 +79,7 @@ export async function reset(): Promise<string> {
       bus.broadcast({ kind: 'conductor-status', state: 'idle' });
     }
   }
-  store.setKV('conductor_session', '');
+  store.setKV(SESSION_KEY, '');
   store.setKV('conductor_handoff', handoff);
   const notice = handoff
     ? '— new conversation started; handoff carried over —'
@@ -96,7 +98,7 @@ async function runTurn(text: string, role: 'user' | 'event'): Promise<string> {
   try {
     const handoff = store.getKV('conductor_handoff');
     const effective =
-      handoff && !store.getKV('conductor_session')
+      handoff && !store.getKV(SESSION_KEY)
         ? `[CONTEXT FROM YOUR PREVIOUS CONVERSATION]\n${handoff}\n[END CONTEXT]\n\n${text}`
         : text;
     const reply = await invoke(effective);
@@ -114,9 +116,14 @@ async function runTurn(text: string, role: 'user' | 'event'): Promise<string> {
 }
 
 function invoke(prompt: string): Promise<string> {
+  return PROVIDER === 'codex' ? invokeCodex(prompt) : invokeClaude(prompt);
+}
+
+function invokeClaude(prompt: string): Promise<string> {
   return new Promise((resolve, reject) => {
+    const command = agentCommand('claude');
     const args = [
-      ...config.worker.baseArgs,
+      ...command.baseArgs,
       '--append-system-prompt', buildSystemPrompt(),
       '--mcp-config', MCP_CONFIG,
       '--strict-mcp-config',
@@ -124,10 +131,10 @@ function invoke(prompt: string): Promise<string> {
     ];
     // -p --resume forks a fresh session id each turn, so always chain from the
     // id captured out of the previous turn's result event.
-    const sessionId = store.getKV('conductor_session');
+    const sessionId = store.getKV(SESSION_KEY);
     if (sessionId) args.push('--resume', sessionId);
 
-    const child = spawn(config.worker.command, args, {
+    const child = spawn(command.command, args, {
       cwd: config.vaultPath,
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
@@ -159,7 +166,7 @@ function invoke(prompt: string): Promise<string> {
       }
       if (isResult(ev)) {
         result = ev;
-        if (ev.session_id) store.setKV('conductor_session', ev.session_id);
+        if (ev.session_id) store.setKV(SESSION_KEY, ev.session_id);
       }
     });
 
@@ -179,6 +186,82 @@ function invoke(prompt: string): Promise<string> {
         reject(
           new Error(
             result?.result || stderrChunks.join('').slice(-400) || `conductor exited ${code}`,
+          ),
+        );
+      }
+    });
+  });
+}
+
+function invokeCodex(prompt: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const command = agentCommand('codex');
+    const sessionId = store.getKV(SESSION_KEY);
+    const base = [...command.baseArgs];
+    const args = sessionId
+      ? [base[0] ?? 'exec', 'resume', ...base.slice(1)]
+      : base;
+    // `codex exec resume` retains the original session sandbox and does not
+    // accept the fresh-run `--sandbox` option in this command position.
+    if (!sessionId) args.push('--sandbox', 'read-only');
+    args.push('-c', `mcp_servers.jarvis.url="http://localhost:${PORT}/mcp"`);
+    if (sessionId) args.push(sessionId);
+    args.push('-');
+
+    const child = spawn(command.command, args, {
+      cwd: config.vaultPath,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
+    child.stdin.end(`${buildSystemPrompt()}\n\n[CURRENT TURN]\n${prompt}`);
+
+    let reply = '';
+    let completed = false;
+    let failure = '';
+    const stderrChunks: string[] = [];
+
+    const parser = createLineParser((ev) => {
+      if (ev.type === 'thread.started' && 'thread_id' in ev) {
+        store.setKV(SESSION_KEY, String(ev.thread_id));
+      }
+      if ((ev.type === 'item.started' || ev.type === 'item.completed') && 'item' in ev) {
+        const item = ev.item as Record<string, unknown>;
+        if (ev.type === 'item.completed' && item.type === 'agent_message') {
+          reply = String(item.text ?? '');
+        }
+        if (item.type === 'mcp_tool_call') {
+          const name = String(item.tool ?? item.name ?? 'mcp_tool');
+          const input = item.arguments ?? item.input ?? {};
+          bus.broadcast({ kind: 'conductor-tool', name, input });
+          if (ev.type === 'item.completed') {
+            store.addConductorMessage(
+              'tool',
+              `${name} ${JSON.stringify(input)}`.slice(0, 400),
+            );
+          }
+        }
+      }
+      if (ev.type === 'turn.completed') completed = true;
+      if (ev.type === 'turn.failed' || ev.type === 'error') {
+        failure = JSON.stringify(ev).slice(-500);
+      }
+    });
+
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', (chunk: string) => parser.push(chunk));
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', (chunk: string) => stderrChunks.push(chunk));
+
+    const watchdog = setTimeout(() => killTree(child), 5 * 60_000);
+    child.on('close', (code) => {
+      clearTimeout(watchdog);
+      parser.flush();
+      if (completed) {
+        resolve(reply || '(no reply)');
+      } else {
+        reject(
+          new Error(
+            failure || stderrChunks.join('').slice(-400) || `conductor exited ${code}`,
           ),
         );
       }
