@@ -52,6 +52,16 @@ function timestamp(): string {
   return new Date().toLocaleTimeString('en-GB');
 }
 
+// child.kill() on Windows fells only the top process; claude spawns its own
+// children (shells, subagents), so cancel must take down the whole tree.
+function killTree(child: ReturnType<typeof spawn>) {
+  if (process.platform === 'win32' && child.pid) {
+    spawn('taskkill', ['/pid', String(child.pid), '/t', '/f'], { windowsHide: true });
+  } else {
+    child.kill();
+  }
+}
+
 // One human-readable digest line per interesting event; null = dashboard/DB only.
 function digest(ev: WorkerEvent): string[] {
   if (isInit(ev)) {
@@ -134,14 +144,14 @@ export function startRun(opts: RunOptions): RunHandle {
 
   const timeout = setTimeout(() => {
     killedAs = 'timeout';
-    child.kill();
+    killTree(child);
   }, opts.timeoutMs ?? 15 * 60_000);
 
   emitter.id = id;
   emitter.notePath = notePath;
   emitter.kill = () => {
     killedAs = 'cancelled';
-    child.kill();
+    killTree(child);
   };
 
   emitter.done = new Promise<RunSummary>((resolve) => {

@@ -5,6 +5,9 @@ import { fileURLToPath } from 'node:url';
 export interface JarvisConfig {
   vaultPath: string;
   dbPath: string;
+  server?: {
+    port: number;
+  };
   worker: {
     command: string;
     baseArgs: string[];

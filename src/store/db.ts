@@ -57,6 +57,14 @@ const insertEventStmt = db.prepare(
   `INSERT INTO events (run_id, ts, type, subtype, payload) VALUES (?, ?, ?, ?, ?)`,
 );
 const getRunStmt = db.prepare(`SELECT * FROM runs WHERE id = ?`);
+const listRunsStmt = db.prepare(`SELECT * FROM runs ORDER BY started_at DESC LIMIT ?`);
+const getEventsStmt = db.prepare(
+  `SELECT ts, type, subtype, payload FROM events WHERE run_id = ? ORDER BY id`,
+);
+const markOrphansStmt = db.prepare(
+  `UPDATE runs SET status = 'orphaned', error = 'server restarted mid-run', ended_at = ?
+   WHERE status IN ('starting', 'running')`,
+);
 
 export function createRun(row: {
   id: string;
@@ -105,4 +113,16 @@ export function insertEvent(runId: string, type: string, subtype: string | null,
 
 export function getRun(id: string) {
   return getRunStmt.get(id);
+}
+
+export function listRuns(limit = 50) {
+  return listRunsStmt.all(limit);
+}
+
+export function getEvents(runId: string) {
+  return getEventsStmt.all(runId);
+}
+
+export function markOrphans() {
+  markOrphansStmt.run(new Date().toISOString());
 }

@@ -1,6 +1,7 @@
 {
   "vaultPath": "C:/Users/radkn/desktop/jarvis-vault",
   "dbPath": "./data/jarvis.db",
+  "server": { "port": 4747 },
   "worker": {
     "command": "claude",
     "baseArgs": ["-p", "--output-format", "stream-json", "--verbose"]
