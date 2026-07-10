@@ -33,6 +33,12 @@ export interface ConductorIdentityConfig {
   label: string;
   provider: AgentProvider;
   model?: string;
+  models?: ConductorModelOption[];
+}
+
+export interface ConductorModelOption {
+  id: string;
+  label: string;
 }
 
 export const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -57,8 +63,30 @@ export function conductorProvider(): AgentProvider {
 
 export function conductorIdentities(): Record<string, ConductorIdentityConfig> {
   return config.conductor?.identities ?? {
-    fable: { label: 'Fable / Opus', provider: 'claude', model: 'opus' },
-    sol: { label: 'Sol', provider: 'codex' },
+    fable: {
+      label: 'Fable / Opus',
+      provider: 'claude',
+      model: 'opus',
+      models: [
+        { id: 'fable', label: 'Fable 5' },
+        { id: 'opus', label: 'Opus (latest)' },
+        { id: 'sonnet', label: 'Sonnet (latest)' },
+      ],
+    },
+    sol: {
+      label: 'Sol',
+      provider: 'codex',
+      model: 'gpt-5.6-sol',
+      models: [
+        { id: 'gpt-5.6-sol', label: 'GPT-5.6-Sol' },
+        { id: 'gpt-5.6-terra', label: 'GPT-5.6-Terra' },
+        { id: 'gpt-5.6-luna', label: 'GPT-5.6-Luna' },
+        { id: 'gpt-5.5', label: 'GPT-5.5' },
+        { id: 'gpt-5.4', label: 'GPT-5.4' },
+        { id: 'gpt-5.4-mini', label: 'GPT-5.4-Mini' },
+        { id: 'gpt-5.3-codex-spark', label: 'GPT-5.3-Codex-Spark' },
+      ],
+    },
   };
 }
 

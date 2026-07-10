@@ -17,6 +17,7 @@ const taskProgressEl = document.getElementById('task-progress');
 const skillsEl = document.getElementById('skills');
 const resetBtn = document.getElementById('reset-chat');
 const identitySwitchEl = document.getElementById('identity-switch');
+const conductorModelSelect = document.getElementById('conductor-model');
 
 let selectedProject = 'all';
 let projects = [];
@@ -119,6 +120,10 @@ function renderIdentity(state) {
       </button>`;
     })
     .join('');
+  conductorModelSelect.innerHTML = (state.models ?? [])
+    .map((model) => `<option value="${esc(model.id)}"${model.id === state.model ? ' selected' : ''}>${esc(model.label)}</option>`)
+    .join('');
+  conductorModelSelect.disabled = state.busy || conductorBusy;
 }
 
 identitySwitchEl.addEventListener('click', async (event) => {
@@ -134,6 +139,24 @@ identitySwitchEl.addEventListener('click', async (event) => {
   if (response.ok) renderIdentity(state);
   else {
     addChatMessage('system', `switch failed: ${state.error ?? response.status}`);
+    const current = await fetch('/api/conductor/identity').then((result) => result.json());
+    renderIdentity(current);
+  }
+});
+
+conductorModelSelect.addEventListener('change', async () => {
+  if (conductorBusy) return;
+  conductorModelSelect.disabled = true;
+  for (const option of identitySwitchEl.querySelectorAll('button')) option.disabled = true;
+  const response = await fetch('/api/conductor/model', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: conductorModelSelect.value }),
+  });
+  const state = await response.json().catch(() => ({}));
+  if (response.ok) renderIdentity(state);
+  else {
+    addChatMessage('system', `model switch failed: ${state.error ?? response.status}`);
     const current = await fetch('/api/conductor/identity').then((result) => result.json());
     renderIdentity(current);
   }
@@ -324,6 +347,7 @@ function setThinking(on) {
   chatButton.disabled = on;
   chatButton.textContent = on ? '…' : 'Send';
   for (const option of identitySwitchEl.querySelectorAll('button')) option.disabled = on;
+  conductorModelSelect.disabled = on;
   resetBtn.disabled = on;
 }
 

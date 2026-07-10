@@ -25,7 +25,7 @@ Jarvis is a local, voice-driven agent orchestrator. The Conductor holds the conv
 - Codex workers use `read-only` or `workspace-write` sandboxes. Never use `danger-full-access` or bypass approvals.
 - Claude workers use explicit allowed-tool lists. Do not pass Claude-only flags to Codex or Codex-only flags to Claude.
 - Namespace resumable Conductor session state by provider so a session ID is never sent to the wrong CLI.
-- Keep live Conductor identities configurable. Switching identities must preserve independent sessions, carry recent shared context forward, and be rejected while a turn is running.
+- Keep live Conductor identities and model versions configurable. Switching either must preserve independent identity-model sessions, carry recent shared context forward, and be rejected while a turn is running.
 - Preserve unknown JSONL events in the database and tolerate them without crashing.
 
 ## Vault safety invariants

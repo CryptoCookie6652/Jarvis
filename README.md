@@ -36,9 +36,11 @@ Claude workers retain the original allowed-tool behavior.
 The Conductor header has a live two-way identity switch:
 
 - **Fable / Opus** uses Claude Code with the Opus model.
-- **Sol** uses Codex with its configured default model.
+- **Sol** uses Codex pinned to `gpt-5.6-sol`.
 
-Each identity keeps an independent resumable session. When you switch, Jarvis carries recent shared conversation into the newly active identity, so you can continue without restarting the server or repeating context. The active identity persists across restarts.
+The adjacent model selector lets you change versions at runtime. Fable offers the installed Claude aliases (`fable`, `opus`, and `sonnet`); Sol offers the locally available Codex catalog from GPT-5.6-Sol through GPT-5.3-Codex-Spark.
+
+Each identity-model pair keeps an independent resumable session. When you switch identity or model, Jarvis carries recent shared conversation into the newly active session, so you can continue without restarting the server or repeating context. Active choices persist across restarts.
 
 ## Important paths
 

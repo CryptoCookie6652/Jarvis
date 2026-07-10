@@ -114,6 +114,18 @@ const server = createServer(async (req, res) => {
       }
     }
 
+    if (url.pathname === '/api/conductor/model' && req.method === 'POST') {
+      if (conductor.isBusy()) return json(res, { error: 'busy' }, 409);
+      const body = await readBody(req);
+      const model = typeof body.model === 'string' ? body.model.trim() : '';
+      if (!model) return json(res, { error: 'model required' }, 400);
+      try {
+        return json(res, conductor.switchModel(model));
+      } catch (err) {
+        return json(res, { error: String(err) }, 400);
+      }
+    }
+
     if (url.pathname === '/api/conductor/say' && req.method === 'POST') {
       const body = await readBody(req);
       const text = typeof body.text === 'string' ? body.text.trim() : '';
