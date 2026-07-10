@@ -55,13 +55,52 @@ async function flushNotices() {
   }
 }
 
+// Retire the current session: ask it for a handoff note, then clear the
+// session id so the next turn starts fresh with the handoff injected.
+export async function reset(): Promise<string> {
+  if (busy) throw new Error('conductor is busy');
+  const sessionId = store.getKV('conductor_session');
+  let handoff = '';
+  if (sessionId) {
+    busy = true;
+    bus.broadcast({ kind: 'conductor-status', state: 'thinking' });
+    try {
+      handoff = await invoke(
+        'We are rotating to a fresh conversation. Write a concise handoff note for your successor: ' +
+          'durable user preferences, open threads, active or pending tasks, and anything mid-flight. ' +
+          'Plain prose, no preamble.',
+      );
+    } catch (err) {
+      console.error('handoff turn failed:', err);
+    } finally {
+      busy = false;
+      bus.broadcast({ kind: 'conductor-status', state: 'idle' });
+    }
+  }
+  store.setKV('conductor_session', '');
+  store.setKV('conductor_handoff', handoff);
+  const notice = handoff
+    ? '— new conversation started; handoff carried over —'
+    : '— new conversation started —';
+  store.addConductorMessage('event', notice);
+  bus.broadcast({ kind: 'conductor-say', role: 'event', text: notice });
+  void flushNotices();
+  return handoff;
+}
+
 async function runTurn(text: string, role: 'user' | 'event'): Promise<string> {
   busy = true;
   store.addConductorMessage(role, text);
   bus.broadcast({ kind: 'conductor-say', role, text });
   bus.broadcast({ kind: 'conductor-status', state: 'thinking' });
   try {
-    const reply = await invoke(text);
+    const handoff = store.getKV('conductor_handoff');
+    const effective =
+      handoff && !store.getKV('conductor_session')
+        ? `[CONTEXT FROM YOUR PREVIOUS CONVERSATION]\n${handoff}\n[END CONTEXT]\n\n${text}`
+        : text;
+    const reply = await invoke(effective);
+    if (handoff) store.setKV('conductor_handoff', '');
     store.addConductorMessage('assistant', reply);
     // trigger tells the voice layer whether this reply answers the user or
     // announces an event — announcements get a chime.

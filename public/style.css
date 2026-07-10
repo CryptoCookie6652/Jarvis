@@ -246,3 +246,68 @@ main {
   cursor: pointer;
 }
 #chat-form button:disabled { opacity: 0.5; cursor: wait; }
+
+#reset-chat {
+  float: right;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--dim);
+  border-radius: 6px;
+  padding: 0.1rem 0.6rem;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+#reset-chat:hover { color: var(--text); border-color: var(--dim); }
+
+#project-tabs { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.7rem; }
+.tab {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--dim);
+  border-radius: 999px;
+  padding: 0.2rem 0.8rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+.tab.active { color: var(--accent); border-color: var(--accent); }
+
+#tasks-panel, #skills-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 0.9rem;
+  margin-top: 0.9rem;
+}
+#tasks-panel summary, #skills-panel summary {
+  cursor: pointer;
+  color: var(--dim);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+#task-progress { text-transform: none; letter-spacing: 0; color: var(--accent); margin-left: 0.5rem; }
+
+.task-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid #1c2129;
+  font-size: 0.8rem;
+}
+.task-row:last-child { border-bottom: 0; }
+.task-row .task-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-row .task-meta { color: var(--dim); font-size: 0.72rem; font-family: Consolas, monospace; }
+.task-row.empty, .skill-row.empty { color: var(--dim); font-style: italic; }
+
+.skill-row { padding: 0.4rem 0; border-bottom: 1px solid #1c2129; font-size: 0.8rem; }
+.skill-row:last-child { border-bottom: 0; }
+.skill-row label { display: flex; gap: 0.45rem; align-items: baseline; cursor: pointer; }
+.skill-scope {
+  color: var(--dim);
+  font-size: 0.68rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 0.5rem;
+}
+.skill-desc { color: var(--dim); font-size: 0.73rem; margin-left: 1.5rem; }

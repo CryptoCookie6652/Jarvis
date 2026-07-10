@@ -9,6 +9,9 @@ import * as bus from './bus.js';
 import { createMcpServer } from '../conductor/tools.js';
 import * as conductor from '../conductor/session.js';
 import * as tasks from '../vault/tasks.js';
+import { listProjects } from '../vault/projects.js';
+import { listSkills, seedSkills, toggleSkill } from '../vault/skills.js';
+import { renderBoard } from '../vault/board.js';
 
 const PORT = config.server?.port ?? 4747;
 const publicDir = join(projectRoot, 'public');
@@ -35,15 +38,21 @@ async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> 
 
 // Runs left 'running' by a previous server process are unfinishable — say so.
 store.markOrphans();
+seedSkills();
+renderBoard();
 
 // Close the loop: worker completions update the task note and become [EVENT]
 // notices the Conductor relays unprompted — the proactive-announcement path.
 bus.onRunDone((summary, meta) => {
   if (meta.task) {
-    tasks.updateTask(meta.task, {
+    const changed = tasks.updateTask(meta.task, {
       status: summary.status === 'done' ? 'done' : 'failed',
       run: summary.id,
     });
+    if (changed) {
+      renderBoard();
+      bus.broadcast({ kind: 'task-updated', slug: meta.task });
+    }
   }
   if (store.getKV('conductor_session')) {
     conductor.notify(
@@ -100,6 +109,53 @@ const server = createServer(async (req, res) => {
       } catch (err) {
         return json(res, { error: String(err) }, 500);
       }
+    }
+
+    if (url.pathname === '/api/conductor/reset' && req.method === 'POST') {
+      if (conductor.isBusy()) return json(res, { error: 'busy' }, 409);
+      try {
+        const handoff = await conductor.reset();
+        return json(res, { ok: true, handoff });
+      } catch (err) {
+        return json(res, { error: String(err) }, 500);
+      }
+    }
+
+    if (url.pathname === '/api/projects' && req.method === 'GET') {
+      const allTasks = tasks.listTasks();
+      return json(
+        res,
+        listProjects().map((p) => {
+          const own = allTasks.filter((t) => t.project === p.name);
+          return {
+            ...p,
+            total: own.length,
+            done: own.filter((t) => t.status === 'done').length,
+          };
+        }),
+      );
+    }
+
+    if (url.pathname === '/api/tasks' && req.method === 'GET') {
+      const project = url.searchParams.get('project') ?? undefined;
+      return json(
+        res,
+        tasks
+          .listTasks(project)
+          .map(({ spec, ...rest }) => rest)
+          .sort((a, b) => (b.created ?? '').localeCompare(a.created ?? '')),
+      );
+    }
+
+    if (url.pathname === '/api/skills' && req.method === 'GET') {
+      return json(res, listSkills().map(({ body, ...rest }) => rest));
+    }
+
+    const skillMatch = url.pathname.match(/^\/api\/skills\/([\w-]+)\/toggle$/);
+    if (skillMatch && req.method === 'POST') {
+      const enabled = toggleSkill(skillMatch[1]);
+      if (enabled === null) return json(res, { error: 'no such skill' }, 404);
+      return json(res, { ok: true, enabled });
     }
 
     if (url.pathname === '/api/meta' && req.method === 'GET') {

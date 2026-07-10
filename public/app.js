@@ -11,6 +11,19 @@ const chatEl = document.getElementById('chat');
 const chatForm = document.getElementById('chat-form');
 const chatInput = chatForm.querySelector('textarea');
 const chatButton = chatForm.querySelector('button');
+const tabsEl = document.getElementById('project-tabs');
+const tasksEl = document.getElementById('tasks');
+const taskProgressEl = document.getElementById('task-progress');
+const skillsEl = document.getElementById('skills');
+const resetBtn = document.getElementById('reset-chat');
+
+let selectedProject = 'all';
+let projects = [];
+let taskList = [];
+
+const STATUS_ICON = {
+  todo: '⬜', dispatched: '📤', running: '🔄', review: '👀', done: '✅', failed: '❌',
+};
 
 function esc(text) {
   const div = document.createElement('div');
@@ -27,15 +40,106 @@ function elapsedLabel(run) {
   return '—';
 }
 
+function renderTabs() {
+  const tabs = [{ name: 'all', label: 'All' }].concat(
+    projects.map((p) => ({ name: p.name, label: `${p.name} ${p.done}/${p.total}` })),
+  );
+  tabsEl.innerHTML = tabs
+    .map(
+      (t) =>
+        `<button class="tab${t.name === selectedProject ? ' active' : ''}" data-project="${esc(t.name)}">${esc(t.label)}</button>`,
+    )
+    .join('');
+}
+
+function renderTasks() {
+  const visible =
+    selectedProject === 'all' ? taskList : taskList.filter((t) => t.project === selectedProject);
+  const done = visible.filter((t) => t.status === 'done').length;
+  taskProgressEl.textContent = visible.length ? `${done}/${visible.length} done` : '';
+  tasksEl.innerHTML = visible.length
+    ? visible
+        .map(
+          (t) => `
+      <div class="task-row status-${esc(t.status)}">
+        <span class="task-icon">${STATUS_ICON[t.status] ?? '❔'}</span>
+        <span class="task-title" title="${esc(t.slug)}">${esc(t.title)}</span>
+        <span class="task-meta">${esc(t.status)}${t.run ? ` · ${esc(t.run)}` : ''}</span>
+      </div>`,
+        )
+        .join('')
+    : '<div class="task-row empty">no tasks yet</div>';
+}
+
+function renderSkills(skills) {
+  skillsEl.innerHTML = skills.length
+    ? skills
+        .map(
+          (s) => `
+      <div class="skill-row">
+        <label>
+          <input type="checkbox" data-skill="${esc(s.slug)}" ${s.enabled ? 'checked' : ''} />
+          <span class="skill-name">${esc(s.name)}</span>
+          <span class="skill-scope">${esc(s.apply)}</span>
+        </label>
+        <div class="skill-desc">${esc(s.description)}</div>
+      </div>`,
+        )
+        .join('')
+    : '<div class="skill-row empty">no skills — add notes to the vault\'s Skills/ folder</div>';
+}
+
+async function loadProjectsAndTasks() {
+  const [p, t] = await Promise.all([
+    fetch('/api/projects').then((r) => r.json()),
+    fetch('/api/tasks').then((r) => r.json()),
+  ]);
+  projects = p;
+  taskList = t;
+  renderTabs();
+  renderTasks();
+  renderCards();
+}
+
+async function loadSkills() {
+  renderSkills(await fetch('/api/skills').then((r) => r.json()));
+}
+
+tabsEl.addEventListener('click', (event) => {
+  const tab = event.target.closest('button.tab');
+  if (!tab) return;
+  selectedProject = tab.dataset.project;
+  renderTabs();
+  renderTasks();
+  renderCards();
+});
+
+skillsEl.addEventListener('change', async (event) => {
+  const box = event.target.closest('input[data-skill]');
+  if (!box) return;
+  await fetch(`/api/skills/${box.dataset.skill}/toggle`, { method: 'POST' });
+  loadSkills();
+});
+
+resetBtn.addEventListener('click', async () => {
+  resetBtn.disabled = true;
+  resetBtn.textContent = '↺ …';
+  await fetch('/api/conductor/reset', { method: 'POST' }).catch(() => {});
+  resetBtn.disabled = false;
+  resetBtn.textContent = '↺ new';
+});
+
 function renderCards() {
   const order = { running: 0, starting: 0 };
-  const sorted = [...runs.values()].sort((a, b) => {
+  const filtered = [...runs.values()].filter(
+    (r) => selectedProject === 'all' || r.project === selectedProject,
+  );
+  const sorted = filtered.sort((a, b) => {
     const oa = order[a.status] ?? 1;
     const ob = order[b.status] ?? 1;
     if (oa !== ob) return oa - ob;
     return String(b.started_at).localeCompare(String(a.started_at));
   });
-
   cardsEl.innerHTML = sorted
     .map((run) => {
       const live = run.status === 'running' || run.status === 'starting';
@@ -113,6 +217,9 @@ async function init() {
     addChatMessage(row.role === 'event' ? 'system' : row.role, row.text);
   }
 
+  loadProjectsAndTasks();
+  loadSkills();
+
   const source = new EventSource('/events');
   source.onmessage = (event) => {
     const msg = JSON.parse(event.data);
@@ -146,6 +253,8 @@ async function init() {
     } else if (msg.kind === 'conductor-status') {
       setThinking(msg.state === 'thinking');
       voice.setThinking(msg.state === 'thinking');
+    } else if (msg.kind === 'task-created' || msg.kind === 'task-updated') {
+      loadProjectsAndTasks();
     }
   };
 }

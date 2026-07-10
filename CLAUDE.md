@@ -5,10 +5,11 @@ workers and reports on them, live and out loud. TypeScript, Node 24, minimal dep
 
 ## Layout
 - `src/engine/` — spawn workers (`claude -p --output-format stream-json --verbose --worktree`), parse the JSON-lines event stream
-- `src/store/` — SQLite via built-in `node:sqlite` (no native deps) for the raw event firehose
-- `src/vault/` — markdown writes into the Obsidian vault (rules below)
-- `src/conductor/` — conversation loop + its tools (write_task, dispatch_agent, agent_status/log/cancel, vault search)
-- `src/server/` — local HTTP + WebSocket server for the browser UI (M2+)
+- `src/store/` — SQLite via built-in `node:sqlite` (no native deps): event firehose, run history, kv, chat log
+- `src/vault/` — vault writes: notes (frontmatter emit/parse), tasks, projects, skills, board (app-generated Board.md)
+- `src/conductor/` — session (resumed claude -p, handoff-on-reset), prompt, MCP tools (write_task, dispatch_agent, agent_status/log/cancel, remember)
+- `src/server/` — node:http server: static UI, JSON API, SSE at /events, MCP at /mcp
+- `public/` — no-build vanilla UI: dashboard, chat, voice.js (Web Speech + speechSynthesis, barge-in, chime)
 - The vault lives OUTSIDE this repo: `C:\Users\radkn\desktop\jarvis-vault` (path in `jarvis.config.json`)
 
 ## Engine facts (verified by smoke test 2026-07-09, CLI 2.1.206)
@@ -33,4 +34,7 @@ The Conductor NEVER gets Edit/Write/Bash on repos. It writes prose (task notes i
 and calls dispatch tools. All code changes happen in workers, in isolated worktrees.
 
 ## Milestones
-M1 engine → M2 dashboard → M3 conductor (text) → M4 voice (barge-in, turn-taking policy) → M5 cockpit.
+All five shipped 2026-07-09/10: M1 engine, M2 dashboard, M3 conductor, M4 voice (free tier:
+Web Speech API + speechSynthesis; upgrade seams for Messages API conductor + cloud/local
+STT-TTS remain), M5 cockpit (project tabs, tasks panel, skills, generated Board.md,
+remember tool, session rotation with handoff).

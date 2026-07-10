@@ -1,13 +1,15 @@
-import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { projectRoot } from '../config.js';
+import { config, projectRoot } from '../config.js';
 import * as store from '../store/db.js';
 import * as bus from '../server/bus.js';
 import { startRun } from '../engine/run.js';
 import * as tasks from '../vault/tasks.js';
-import { runNotePath } from '../vault/notes.js';
+import { frontmatter, runNotePath } from '../vault/notes.js';
+import { enabledSkills } from '../vault/skills.js';
+import { renderBoard } from '../vault/board.js';
 
 // The Conductor's hands. Every tool here lands in this process and reuses the
 // same startRun/bus/store paths the dashboard uses — one door for everyone.
@@ -40,11 +42,17 @@ function brief(row: Record<string, unknown>) {
 }
 
 function workerPrompt(task: tasks.TaskNote): string {
-  return (
+  let prompt =
     `You are a worker agent executing the task "${task.title}". Work only in the current directory. ` +
     `Follow the spec exactly — you cannot ask questions. Finish with a concise summary of what you did ` +
-    `and anything the user should review.\n\n${task.spec}`
-  );
+    `and anything the user should review.\n\n${task.spec}`;
+  const standing = enabledSkills('worker');
+  if (standing.length) {
+    prompt +=
+      '\n\n## Standing instructions\n' +
+      standing.map((s) => `### ${s.name}\n${s.body}`).join('\n\n');
+  }
+  return prompt;
 }
 
 export function createMcpServer(): McpServer {
@@ -66,6 +74,7 @@ export function createMcpServer(): McpServer {
     },
     async ({ title, spec, cwd, project }) => {
       const { slug, path } = tasks.createTask({ title, spec, cwd, project });
+      renderBoard();
       bus.broadcast({ kind: 'task-created', slug, title });
       return reply({ ok: true, task: slug, note: path });
     },
@@ -109,6 +118,8 @@ export function createMcpServer(): McpServer {
       });
       bus.track(handle, { task, project: note.project ?? undefined, cwd });
       tasks.updateTask(task, { status: 'dispatched', run: handle.id });
+      renderBoard();
+      bus.broadcast({ kind: 'task-updated', slug: task });
       return reply({ ok: true, run: handle.id, note: note.path });
     },
   );
@@ -155,6 +166,26 @@ export function createMcpServer(): McpServer {
       inputSchema: { run: z.string().describe('Run id') },
     },
     async ({ run }) => reply({ ok: bus.cancel(run) }),
+  );
+
+  mcp.registerTool(
+    'remember',
+    {
+      description:
+        'Save a durable fact or preference to long-term memory (Memory/memory.md). ' +
+        'Use when the user states something worth keeping across conversations.',
+      inputSchema: { fact: z.string().describe('One self-contained sentence') },
+    },
+    async ({ fact }) => {
+      const dir = join(config.vaultPath, 'Memory');
+      mkdirSync(dir, { recursive: true });
+      const path = join(dir, 'memory.md');
+      if (!existsSync(path)) {
+        writeFileSync(path, frontmatter({ type: 'memory' }) + '\n# Memory\n\n', { flag: 'wx' });
+      }
+      appendFileSync(path, `- ${new Date().toISOString().slice(0, 10)}: ${fact.replace(/\r?\n/g, ' ')}\n`);
+      return reply({ ok: true });
+    },
   );
 
   return mcp;

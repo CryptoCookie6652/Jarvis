@@ -1,15 +1,12 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { config } from '../config.js';
-import { frontmatter } from './notes.js';
+import { frontmatter, parseFrontmatter, type Scalar } from './notes.js';
+import { ensureProject } from './projects.js';
 
 // Task notes are the one vault file the app rewrites (status transitions).
 // The app is the sole writer of frontmatter; the user owns the body — updates
 // re-emit frontmatter and preserve the body byte-for-byte.
-
-const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
-
-type Scalar = string | number | boolean | null;
 
 export interface TaskNote {
   slug: string;
@@ -18,38 +15,13 @@ export interface TaskNote {
   project: string | null;
   cwd: string | null;
   run: string | null;
+  created: string | null;
   spec: string;
   path: string;
 }
 
 function tasksDir(): string {
   return join(config.vaultPath, 'Tasks');
-}
-
-function parseScalar(raw: string): Scalar {
-  if (raw === 'null') return null;
-  if (raw === 'true') return true;
-  if (raw === 'false') return false;
-  if (/^-?\d+(\.\d+)?$/.test(raw)) return Number(raw);
-  if (raw.startsWith('"')) {
-    try {
-      return JSON.parse(raw) as string;
-    } catch {
-      return raw;
-    }
-  }
-  return raw;
-}
-
-function parseFrontmatter(text: string): { fields: Record<string, Scalar>; body: string } | null {
-  const match = text.match(FRONTMATTER_RE);
-  if (!match) return null;
-  const fields: Record<string, Scalar> = {};
-  for (const line of match[1].split(/\r?\n/)) {
-    const kv = line.match(/^(\w+): (.*)$/);
-    if (kv) fields[kv[1]] = parseScalar(kv[2]);
-  }
-  return { fields, body: text.slice(match[0].length) };
 }
 
 export function slugify(title: string): string {
@@ -68,6 +40,7 @@ export function createTask(fields: {
   project?: string;
 }): { slug: string; path: string } {
   mkdirSync(tasksDir(), { recursive: true });
+  if (fields.project) ensureProject(fields.project);
   const slug = slugify(fields.title);
   const path = join(tasksDir(), `${slug}.md`);
   const head = frontmatter({
@@ -98,6 +71,7 @@ export function readTask(slug: string): TaskNote | null {
     project,
     cwd: typeof fields.cwd === 'string' ? fields.cwd : null,
     run: typeof fields.run === 'string' ? fields.run : null,
+    created: typeof fields.created === 'string' ? fields.created : null,
     spec: body,
     path,
   };
@@ -110,4 +84,15 @@ export function updateTask(slug: string, patch: Record<string, Scalar>): boolean
   if (!parsed) return false;
   writeFileSync(path, frontmatter({ ...parsed.fields, ...patch }) + parsed.body);
   return true;
+}
+
+export function listTasks(project?: string): TaskNote[] {
+  if (!existsSync(tasksDir())) return [];
+  const notes: TaskNote[] = [];
+  for (const file of readdirSync(tasksDir())) {
+    if (!file.endsWith('.md')) continue;
+    const note = readTask(file.slice(0, -3));
+    if (note && (!project || note.project === project)) notes.push(note);
+  }
+  return notes;
 }

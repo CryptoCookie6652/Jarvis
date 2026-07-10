@@ -43,7 +43,9 @@
 
   <main>
     <section id="chat-section">
-      <h2>Conductor</h2>
+      <h2>Conductor
+        <button id="reset-chat" type="button" title="Start a fresh conversation — the outgoing one writes a handoff note first">↺ new</button>
+      </h2>
       <div id="chat"></div>
       <form id="chat-form">
         <textarea name="text" rows="2" placeholder="Talk to Jarvis… (Enter to send)" required></textarea>
@@ -52,11 +54,20 @@
     </section>
     <section>
       <h2>Agents</h2>
+      <div id="project-tabs"></div>
       <div id="cards"></div>
+      <details id="tasks-panel" open>
+        <summary>Tasks <span id="task-progress"></span></summary>
+        <div id="tasks"></div>
+      </details>
     </section>
     <section>
       <h2>Live feed</h2>
       <div id="feed"></div>
+      <details id="skills-panel">
+        <summary>Skills</summary>
+        <div id="skills"></div>
+      </details>
     </section>
   </main>
 
