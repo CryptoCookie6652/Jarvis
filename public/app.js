@@ -5,6 +5,10 @@ const feedEl = document.getElementById('feed');
 const gaugeEl = document.getElementById('gauge');
 const form = document.getElementById('dispatch-form');
 const dispatchStatus = document.getElementById('dispatch-status');
+const chatEl = document.getElementById('chat');
+const chatForm = document.getElementById('chat-form');
+const chatInput = chatForm.querySelector('textarea');
+const chatButton = chatForm.querySelector('button');
 
 function esc(text) {
   const div = document.createElement('div');
@@ -102,6 +106,11 @@ async function init() {
   for (const row of history) runs.set(row.id, row);
   renderCards();
 
+  const chat = await fetch('/api/conductor/history').then((r) => r.json());
+  for (const row of chat) {
+    addChatMessage(row.role === 'event' ? 'system' : row.role, row.text);
+  }
+
   const source = new EventSource('/events');
   source.onmessage = (event) => {
     const msg = JSON.parse(event.data);
@@ -127,6 +136,12 @@ async function init() {
       renderCards();
     } else if (msg.kind === 'rate-limit') {
       renderGauge(msg.info);
+    } else if (msg.kind === 'conductor-say') {
+      addChatMessage(msg.role === 'event' ? 'system' : msg.role, msg.text);
+    } else if (msg.kind === 'conductor-tool') {
+      addChatMessage('tool', `⚙ ${msg.name} ${JSON.stringify(msg.input ?? {}).slice(0, 140)}`);
+    } else if (msg.kind === 'conductor-status') {
+      setThinking(msg.state === 'thinking');
     }
   };
 }
@@ -137,5 +152,47 @@ setInterval(() => {
     if (run) el.textContent = elapsedLabel(run);
   }
 }, 1000);
+
+function addChatMessage(role, text) {
+  const el = document.createElement('div');
+  el.className = `msg ${role}`;
+  el.textContent = text;
+  chatEl.append(el);
+  chatEl.scrollTop = chatEl.scrollHeight;
+}
+
+function setThinking(on) {
+  chatButton.disabled = on;
+  chatButton.textContent = on ? '…' : 'Send';
+}
+
+async function sendChat() {
+  const text = chatInput.value.trim();
+  if (!text) return;
+  chatInput.value = '';
+  setThinking(true);
+  const res = await fetch('/api/conductor/say', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  });
+  if (!res.ok) {
+    const out = await res.json().catch(() => ({}));
+    addChatMessage('system', `error: ${out.error ?? res.status}`);
+    setThinking(false);
+  }
+  // The reply itself arrives over SSE; conductor-status idle re-enables Send.
+}
+
+chatForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  sendChat();
+});
+chatInput.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' && !event.shiftKey) {
+    event.preventDefault();
+    sendChat();
+  }
+});
 
 init();

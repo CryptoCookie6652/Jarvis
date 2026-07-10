@@ -1,0 +1,146 @@
+import { spawn } from 'node:child_process';
+import { config } from '../config.js';
+import { createLineParser } from '../engine/parser.js';
+import { isAssistant, isInit, isResult, type ResultEvent } from '../engine/events.js';
+import { killTree } from '../engine/run.js';
+import * as store from '../store/db.js';
+import * as bus from '../server/bus.js';
+import { buildSystemPrompt } from './prompt.js';
+
+// The Conductor: one long conversation, resumed turn by turn via `claude -p
+// --resume`. Its cwd is the vault (native Read/Glob/Grep over notes) and its
+// only write-capable tools are the jarvis MCP tools — no Edit/Write/Bash.
+//
+// Turn-taking skeleton for M4: user turns run immediately; [EVENT] notices
+// queue while busy and flush — coalesced into one turn — the moment the
+// conductor goes idle.
+
+const PORT = config.server?.port ?? 4747;
+const MCP_CONFIG = JSON.stringify({
+  mcpServers: { jarvis: { type: 'http', url: `http://localhost:${PORT}/mcp` } },
+});
+const ALLOWED_TOOLS = 'mcp__jarvis,Read,Glob,Grep';
+
+let busy = false;
+const pendingNotices: string[] = [];
+
+export function isBusy(): boolean {
+  return busy;
+}
+
+export function history(limit = 200) {
+  return store.listConductorMessages(limit);
+}
+
+export async function say(text: string): Promise<string> {
+  if (busy) throw new Error('conductor is busy');
+  return runTurn(text, 'user');
+}
+
+export function notify(notice: string) {
+  pendingNotices.push(notice);
+  void flushNotices();
+}
+
+async function flushNotices() {
+  if (busy || pendingNotices.length === 0) return;
+  const combined = pendingNotices
+    .splice(0)
+    .map((n) => `[EVENT] ${n}`)
+    .join('\n');
+  try {
+    await runTurn(combined, 'event');
+  } catch (err) {
+    console.error('conductor event turn failed:', err);
+  }
+}
+
+async function runTurn(text: string, role: 'user' | 'event'): Promise<string> {
+  busy = true;
+  store.addConductorMessage(role, text);
+  bus.broadcast({ kind: 'conductor-say', role, text });
+  bus.broadcast({ kind: 'conductor-status', state: 'thinking' });
+  try {
+    const reply = await invoke(text);
+    store.addConductorMessage('assistant', reply);
+    bus.broadcast({ kind: 'conductor-say', role: 'assistant', text: reply });
+    return reply;
+  } finally {
+    busy = false;
+    bus.broadcast({ kind: 'conductor-status', state: 'idle' });
+    void flushNotices();
+  }
+}
+
+function invoke(prompt: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const args = [
+      ...config.worker.baseArgs,
+      '--append-system-prompt', buildSystemPrompt(),
+      '--mcp-config', MCP_CONFIG,
+      '--strict-mcp-config',
+      '--allowedTools', ALLOWED_TOOLS,
+    ];
+    // -p --resume forks a fresh session id each turn, so always chain from the
+    // id captured out of the previous turn's result event.
+    const sessionId = store.getKV('conductor_session');
+    if (sessionId) args.push('--resume', sessionId);
+
+    const child = spawn(config.worker.command, args, {
+      cwd: config.vaultPath,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
+    child.stdin.end(prompt);
+
+    let result: ResultEvent | null = null;
+    const stderrChunks: string[] = [];
+
+    const parser = createLineParser((ev) => {
+      if (isInit(ev)) {
+        const servers =
+          (ev as unknown as { mcp_servers?: { name: string; status: string }[] }).mcp_servers ?? [];
+        const jarvis = servers.find((s) => s.name === 'jarvis');
+        if (!jarvis || jarvis.status !== 'connected') {
+          console.warn('conductor: jarvis MCP server not connected:', JSON.stringify(servers));
+        }
+      }
+      if (isAssistant(ev)) {
+        for (const block of ev.message.content) {
+          if (block.type === 'tool_use' && 'name' in block) {
+            bus.broadcast({ kind: 'conductor-tool', name: block.name, input: block.input });
+            store.addConductorMessage(
+              'tool',
+              `${String(block.name)} ${JSON.stringify(block.input ?? {})}`.slice(0, 400),
+            );
+          }
+        }
+      }
+      if (isResult(ev)) {
+        result = ev;
+        if (ev.session_id) store.setKV('conductor_session', ev.session_id);
+      }
+    });
+
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', (chunk: string) => parser.push(chunk));
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', (chunk: string) => stderrChunks.push(chunk));
+
+    const watchdog = setTimeout(() => killTree(child), 5 * 60_000);
+
+    child.on('close', (code) => {
+      clearTimeout(watchdog);
+      parser.flush();
+      if (result && !result.is_error) {
+        resolve(result.result ?? '(no reply)');
+      } else {
+        reject(
+          new Error(
+            result?.result || stderrChunks.join('').slice(-400) || `conductor exited ${code}`,
+          ),
+        );
+      }
+    });
+  });
+}

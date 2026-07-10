@@ -1,10 +1,14 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize, sep } from 'node:path';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { config, projectRoot } from '../config.js';
 import * as store from '../store/db.js';
 import { startRun } from '../engine/run.js';
 import * as bus from './bus.js';
+import { createMcpServer } from '../conductor/tools.js';
+import * as conductor from '../conductor/session.js';
+import * as tasks from '../vault/tasks.js';
 
 const PORT = config.server?.port ?? 4747;
 const publicDir = join(projectRoot, 'public');
@@ -32,6 +36,24 @@ async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> 
 // Runs left 'running' by a previous server process are unfinishable — say so.
 store.markOrphans();
 
+// Close the loop: worker completions update the task note and become [EVENT]
+// notices the Conductor relays unprompted — the proactive-announcement path.
+bus.onRunDone((summary, meta) => {
+  if (meta.task) {
+    tasks.updateTask(meta.task, {
+      status: summary.status === 'done' ? 'done' : 'failed',
+      run: summary.id,
+    });
+  }
+  if (store.getKV('conductor_session')) {
+    conductor.notify(
+      `Worker run ${summary.id}${meta.task ? ` (task "${meta.task}")` : ''} finished with status ${summary.status}.` +
+        (summary.resultText ? ` It reported: ${summary.resultText.slice(0, 300)}` : '') +
+        (summary.error ? ` Error: ${summary.error.slice(0, 200)}` : ''),
+    );
+  }
+});
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', 'http://localhost');
   try {
@@ -45,6 +67,39 @@ const server = createServer(async (req, res) => {
       bus.addClient(res);
       req.on('close', () => bus.removeClient(res));
       return;
+    }
+
+    if (url.pathname === '/mcp') {
+      const body = req.method === 'POST' ? await readBody(req) : undefined;
+      const mcp = createMcpServer();
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: undefined, // stateless: fresh server per request
+        enableJsonResponse: true,
+      });
+      res.on('close', () => {
+        void transport.close();
+        void mcp.close();
+      });
+      await mcp.connect(transport);
+      await transport.handleRequest(req, res, body);
+      return;
+    }
+
+    if (url.pathname === '/api/conductor/history' && req.method === 'GET') {
+      return json(res, conductor.history());
+    }
+
+    if (url.pathname === '/api/conductor/say' && req.method === 'POST') {
+      const body = await readBody(req);
+      const text = typeof body.text === 'string' ? body.text.trim() : '';
+      if (!text) return json(res, { error: 'text required' }, 400);
+      if (conductor.isBusy()) return json(res, { error: 'busy' }, 409);
+      try {
+        const reply = await conductor.say(text);
+        return json(res, { reply });
+      } catch (err) {
+        return json(res, { error: String(err) }, 500);
+      }
     }
 
     if (url.pathname === '/api/meta' && req.method === 'GET') {

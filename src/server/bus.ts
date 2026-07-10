@@ -9,6 +9,19 @@ const clients = new Set<ServerResponse>();
 const active = new Map<string, RunHandle>();
 let lastRateLimit: unknown = null;
 
+export interface RunMeta {
+  task?: string;
+  project?: string;
+  cwd: string;
+}
+
+type RunDoneListener = (summary: RunSummary, meta: RunMeta) => void;
+const runDoneListeners = new Set<RunDoneListener>();
+
+export function onRunDone(listener: RunDoneListener) {
+  runDoneListeners.add(listener);
+}
+
 function send(res: ServerResponse, msg: unknown) {
   res.write(`data: ${JSON.stringify(msg)}\n\n`);
 }
@@ -31,10 +44,7 @@ setInterval(() => {
   for (const client of clients) client.write(': ping\n\n');
 }, 25_000).unref();
 
-export function track(
-  handle: RunHandle,
-  meta: { task?: string; project?: string; cwd: string },
-) {
+export function track(handle: RunHandle, meta: RunMeta) {
   active.set(handle.id, handle);
   broadcast({
     kind: 'run-started',
@@ -60,6 +70,7 @@ export function track(
   handle.on('done', (summary: RunSummary) => {
     active.delete(handle.id);
     broadcast({ kind: 'run-done', runId: handle.id, summary });
+    for (const listener of runDoneListeners) listener(summary, meta);
   });
 }
 

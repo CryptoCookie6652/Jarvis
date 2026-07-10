@@ -54,7 +54,7 @@ function timestamp(): string {
 
 // child.kill() on Windows fells only the top process; claude spawns its own
 // children (shells, subagents), so cancel must take down the whole tree.
-function killTree(child: ReturnType<typeof spawn>) {
+export function killTree(child: ReturnType<typeof spawn>) {
   if (process.platform === 'win32' && child.pid) {
     spawn('taskkill', ['/pid', String(child.pid), '/t', '/f'], { windowsHide: true });
   } else {

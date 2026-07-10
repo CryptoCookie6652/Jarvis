@@ -40,6 +40,20 @@ db.exec(`
   );
 `);
 db.exec('CREATE INDEX IF NOT EXISTS idx_events_run ON events(run_id);');
+db.exec(`
+  CREATE TABLE IF NOT EXISTS kv (
+    key   TEXT PRIMARY KEY,
+    value TEXT
+  );
+`);
+db.exec(`
+  CREATE TABLE IF NOT EXISTS conductor_messages (
+    id   INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts   TEXT NOT NULL,
+    role TEXT NOT NULL,
+    text TEXT NOT NULL
+  );
+`);
 
 const insertRunStmt = db.prepare(
   `INSERT INTO runs (id, task, project, prompt, cwd, status, started_at)
@@ -125,4 +139,33 @@ export function getEvents(runId: string) {
 
 export function markOrphans() {
   markOrphansStmt.run(new Date().toISOString());
+}
+
+const getKVStmt = db.prepare(`SELECT value FROM kv WHERE key = ?`);
+const setKVStmt = db.prepare(
+  `INSERT INTO kv (key, value) VALUES (?, ?)
+   ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+);
+const addMsgStmt = db.prepare(
+  `INSERT INTO conductor_messages (ts, role, text) VALUES (?, ?, ?)`,
+);
+const listMsgsStmt = db.prepare(
+  `SELECT ts, role, text FROM conductor_messages ORDER BY id DESC LIMIT ?`,
+);
+
+export function getKV(key: string): string | null {
+  const row = getKVStmt.get(key) as { value: string } | undefined;
+  return row?.value ?? null;
+}
+
+export function setKV(key: string, value: string) {
+  setKVStmt.run(key, value);
+}
+
+export function addConductorMessage(role: string, text: string) {
+  addMsgStmt.run(new Date().toISOString(), role, text);
+}
+
+export function listConductorMessages(limit = 200) {
+  return (listMsgsStmt.all(limit) as { ts: string; role: string; text: string }[]).reverse();
 }
