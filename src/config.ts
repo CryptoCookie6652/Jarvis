@@ -39,6 +39,8 @@ export interface ConductorIdentityConfig {
 export interface ConductorModelOption {
   id: string;
   label: string;
+  efforts?: string[];
+  defaultEffort?: string;
 }
 
 export const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -68,9 +70,9 @@ export function conductorIdentities(): Record<string, ConductorIdentityConfig> {
       provider: 'claude',
       model: 'opus',
       models: [
-        { id: 'fable', label: 'Fable 5' },
-        { id: 'opus', label: 'Opus (latest)' },
-        { id: 'sonnet', label: 'Sonnet (latest)' },
+        { id: 'fable', label: 'Fable 5', efforts: ['low', 'medium', 'high', 'xhigh', 'max'] },
+        { id: 'opus', label: 'Opus (latest)', efforts: ['low', 'medium', 'high', 'xhigh', 'max'] },
+        { id: 'sonnet', label: 'Sonnet (latest)', efforts: ['low', 'medium', 'high', 'xhigh', 'max'] },
       ],
     },
     sol: {
@@ -78,13 +80,13 @@ export function conductorIdentities(): Record<string, ConductorIdentityConfig> {
       provider: 'codex',
       model: 'gpt-5.6-sol',
       models: [
-        { id: 'gpt-5.6-sol', label: 'GPT-5.6-Sol' },
-        { id: 'gpt-5.6-terra', label: 'GPT-5.6-Terra' },
-        { id: 'gpt-5.6-luna', label: 'GPT-5.6-Luna' },
-        { id: 'gpt-5.5', label: 'GPT-5.5' },
-        { id: 'gpt-5.4', label: 'GPT-5.4' },
-        { id: 'gpt-5.4-mini', label: 'GPT-5.4-Mini' },
-        { id: 'gpt-5.3-codex-spark', label: 'GPT-5.3-Codex-Spark' },
+        { id: 'gpt-5.6-sol', label: 'GPT-5.6-Sol', defaultEffort: 'low', efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'] },
+        { id: 'gpt-5.6-terra', label: 'GPT-5.6-Terra', defaultEffort: 'medium', efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'] },
+        { id: 'gpt-5.6-luna', label: 'GPT-5.6-Luna', defaultEffort: 'medium', efforts: ['low', 'medium', 'high', 'xhigh', 'max'] },
+        { id: 'gpt-5.5', label: 'GPT-5.5', defaultEffort: 'medium', efforts: ['low', 'medium', 'high', 'xhigh'] },
+        { id: 'gpt-5.4', label: 'GPT-5.4', defaultEffort: 'medium', efforts: ['low', 'medium', 'high', 'xhigh'] },
+        { id: 'gpt-5.4-mini', label: 'GPT-5.4-Mini', defaultEffort: 'medium', efforts: ['low', 'medium', 'high', 'xhigh'] },
+        { id: 'gpt-5.3-codex-spark', label: 'GPT-5.3-Codex-Spark', defaultEffort: 'high', efforts: ['low', 'medium', 'high', 'xhigh'] },
       ],
     },
   };

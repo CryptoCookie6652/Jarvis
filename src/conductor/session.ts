@@ -21,6 +21,11 @@ const MCP_CONFIG = JSON.stringify({
 const ALLOWED_TOOLS = 'mcp__jarvis,Read,Glob,Grep';
 const IDENTITY_KEY = 'conductor_identity';
 
+type RuntimeIdentity = ConductorIdentityConfig & {
+  effort?: string;
+  effortId: string;
+};
+
 let busy = false;
 const pendingNotices: string[] = [];
 
@@ -33,13 +38,17 @@ function activeIdentityId(): string {
   return saved && identities()[saved] ? saved : defaultConductorIdentity();
 }
 
-function activeIdentity(): ConductorIdentityConfig {
+function activeIdentity(): RuntimeIdentity {
   const id = activeIdentityId();
   return resolvedIdentity(id);
 }
 
 function modelKey(id: string): string {
   return `conductor_model_${id}`;
+}
+
+function effortKey(id: string, model: string | undefined): string {
+  return `conductor_effort_${id}_${model ?? 'default'}`;
 }
 
 function modelOptions(identity: ConductorIdentityConfig) {
@@ -52,33 +61,64 @@ function selectedModel(id: string, identity = identities()[id]): string | undefi
   return identity.model ?? modelOptions(identity)[0]?.id;
 }
 
-function resolvedIdentity(id: string): ConductorIdentityConfig {
-  const identity = identities()[id];
-  return { ...identity, model: selectedModel(id, identity) };
+function effortOptions(identity: ConductorIdentityConfig, model = identity.model) {
+  const option = modelOptions(identity).find((candidate) => candidate.id === model);
+  const efforts = option?.efforts ?? [];
+  const choices = efforts.map((effort) => ({ id: effort, label: effort }));
+  return option?.defaultEffort ? choices : [{ id: 'default', label: 'Provider default' }, ...choices];
 }
 
-function scopedKey(prefix: string, id: string, identity: ConductorIdentityConfig): string {
-  return `${prefix}_${id}_${identity.model ?? 'default'}`;
+function selectedEffortId(
+  id: string,
+  identity: ConductorIdentityConfig,
+  model = selectedModel(id, identity),
+): string {
+  const choices = effortOptions(identity, model);
+  const saved = store.getKV(effortKey(id, model));
+  if (saved && choices.some((choice) => choice.id === saved)) return saved;
+  const option = modelOptions(identity).find((candidate) => candidate.id === model);
+  return option?.defaultEffort ?? choices[0]?.id ?? 'default';
+}
+
+function resolvedIdentity(id: string): RuntimeIdentity {
+  const identity = identities()[id];
+  const model = selectedModel(id, identity);
+  const effortId = selectedEffortId(id, identity, model);
+  return {
+    ...identity,
+    model,
+    effortId,
+    effort: effortId === 'default' ? undefined : effortId,
+  };
+}
+
+function scopedKey(prefix: string, id: string, identity: RuntimeIdentity): string {
+  return `${prefix}_${id}_${identity.model ?? 'default'}_${identity.effortId}`;
 }
 
 function getSession(id: string, identity = resolvedIdentity(id)): string | null {
   const scoped = store.getKV(scopedKey('conductor_session', id, identity));
   if (scoped != null) return scoped;
   const configured = identities()[id];
+  const configuredModel = modelOptions(configured).find((option) => option.id === identity.model);
+  const defaultEffort = configuredModel?.defaultEffort ?? 'default';
+  if (identity.effortId !== defaultEffort) return null;
+  const modelScoped = store.getKV(`conductor_session_${id}_${identity.model ?? 'default'}`);
+  if (modelScoped != null) return modelScoped;
   if (identity.model !== configured.model) return null;
-  // Fall back to session keys created before model-specific sessions existed.
+  // Fall back to session keys created before model- and effort-specific sessions existed.
   return store.getKV(`conductor_session_${id}`) ?? store.getKV(`conductor_session_${identity.provider}`);
 }
 
-function setSession(id: string, identity: ConductorIdentityConfig, value: string) {
+function setSession(id: string, identity: RuntimeIdentity, value: string) {
   store.setKV(scopedKey('conductor_session', id, identity), value);
 }
 
-function handoffKey(id: string, identity: ConductorIdentityConfig): string {
+function handoffKey(id: string, identity: RuntimeIdentity): string {
   return scopedKey('conductor_handoff', id, identity);
 }
 
-function switchContextKey(id: string, identity: ConductorIdentityConfig): string {
+function switchContextKey(id: string, identity: RuntimeIdentity): string {
   return scopedKey('conductor_switch_context', id, identity);
 }
 
@@ -91,11 +131,14 @@ function recentContext(): string {
     .slice(-12_000);
 }
 
-function identityPrompt(identity: ConductorIdentityConfig): string {
+function identityPrompt(identity: RuntimeIdentity): string {
   const runtimeModel = identity.model
     ? `Your configured runtime model is ${identity.model}. When asked about your model or capabilities, report this exact configured model; do not substitute a generic model family from base instructions.`
     : 'Your runtime model is inherited from the provider configuration. Do not claim a specific model version unless it is present in runtime context.';
-  return `${buildSystemPrompt()}\n\nYour active Jarvis identity is ${identity.label}. Remain consistent with that identity. ${runtimeModel}`;
+  const runtimeEffort = identity.effort
+    ? `Your configured reasoning effort is ${identity.effort}.`
+    : 'Your reasoning effort uses the provider default.';
+  return `${buildSystemPrompt()}\n\nYour active Jarvis identity is ${identity.label}. Remain consistent with that identity. ${runtimeModel} ${runtimeEffort}`;
 }
 
 export function isBusy(): boolean {
@@ -114,13 +157,19 @@ export function identityState() {
     active,
     model: identity.model ?? null,
     models: modelOptions(identity),
+    effort: identity.effortId,
+    efforts: effortOptions(identity),
     busy,
-    options: Object.entries(identities()).map(([id, identity]) => ({
-      id,
-      label: identity.label,
-      provider: identity.provider,
-      model: selectedModel(id, identity) ?? null,
-    })),
+    options: Object.entries(identities()).map(([id, identity]) => {
+      const resolved = resolvedIdentity(id);
+      return {
+        id,
+        label: identity.label,
+        provider: identity.provider,
+        model: resolved.model ?? null,
+        effort: resolved.effortId,
+      };
+    }),
   };
 }
 
@@ -155,6 +204,25 @@ export function switchModel(model: string) {
   const next = resolvedIdentity(id);
   store.setKV(switchContextKey(id, next), recentContext());
   const notice = `— ${configured.label} switched to ${option.label} —`;
+  store.addConductorMessage('event', notice);
+  bus.broadcast({ kind: 'conductor-say', role: 'event', text: notice });
+  const state = identityState();
+  bus.broadcast({ kind: 'conductor-identity', ...state });
+  return state;
+}
+
+export function switchEffort(effort: string) {
+  if (busy) throw new Error('conductor is busy');
+  const id = activeIdentityId();
+  const current = resolvedIdentity(id);
+  const option = effortOptions(current).find((candidate) => candidate.id === effort);
+  if (!option) throw new Error(`unknown effort "${effort}" for ${current.model ?? current.label}`);
+  if (current.effortId === effort) return identityState();
+
+  store.setKV(effortKey(id, current.model), effort);
+  const next = resolvedIdentity(id);
+  store.setKV(switchContextKey(id, next), recentContext());
+  const notice = `— ${current.label} / ${current.model ?? 'default model'} switched to ${option.label} effort —`;
   store.addConductorMessage('event', notice);
   bus.broadcast({ kind: 'conductor-say', role: 'event', text: notice });
   const state = identityState();
@@ -257,7 +325,7 @@ async function runTurn(text: string, role: 'user' | 'event'): Promise<string> {
   }
 }
 
-function invoke(id: string, identity: ConductorIdentityConfig, prompt: string): Promise<string> {
+function invoke(id: string, identity: RuntimeIdentity, prompt: string): Promise<string> {
   return identity.provider === 'codex'
     ? invokeCodex(id, identity, prompt)
     : invokeClaude(id, identity, prompt);
@@ -265,7 +333,7 @@ function invoke(id: string, identity: ConductorIdentityConfig, prompt: string): 
 
 function invokeClaude(
   id: string,
-  identity: ConductorIdentityConfig,
+  identity: RuntimeIdentity,
   prompt: string,
 ): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -278,6 +346,7 @@ function invokeClaude(
       '--allowedTools', ALLOWED_TOOLS,
     ];
     if (identity.model) args.push('--model', identity.model);
+    if (identity.effort) args.push('--effort', identity.effort);
     const sessionId = getSession(id, identity);
     if (sessionId) args.push('--resume', sessionId);
 
@@ -335,7 +404,7 @@ function invokeClaude(
 
 function invokeCodex(
   id: string,
-  identity: ConductorIdentityConfig,
+  identity: RuntimeIdentity,
   prompt: string,
 ): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -346,6 +415,7 @@ function invokeCodex(
     if (!sessionId) args.push('--sandbox', 'read-only');
     args.push('-c', `mcp_servers.jarvis.url="http://localhost:${PORT}/mcp"`);
     if (identity.model) args.push('--model', identity.model);
+    if (identity.effort) args.push('-c', `model_reasoning_effort="${identity.effort}"`);
     if (sessionId) args.push(sessionId);
     args.push('-');
 

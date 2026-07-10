@@ -18,6 +18,7 @@ const skillsEl = document.getElementById('skills');
 const resetBtn = document.getElementById('reset-chat');
 const identitySwitchEl = document.getElementById('identity-switch');
 const conductorModelSelect = document.getElementById('conductor-model');
+const conductorEffortSelect = document.getElementById('conductor-effort');
 
 let selectedProject = 'all';
 let projects = [];
@@ -112,7 +113,9 @@ function renderIdentity(state) {
   identitySwitchEl.innerHTML = state.options
     .map((option) => {
       const active = option.id === state.active;
-      const detail = option.model ? `${option.provider} · ${option.model}` : option.provider;
+      const detail = option.model
+        ? `${option.provider} · ${option.model}${option.effort ? ` · ${option.effort}` : ''}`
+        : option.provider;
       return `<button type="button" class="identity-option identity-${esc(option.id)}${active ? ' active' : ''}"
         data-identity="${esc(option.id)}" aria-pressed="${active}" ${state.busy || conductorBusy ? 'disabled' : ''}>
         <span class="identity-dot"></span>
@@ -124,6 +127,13 @@ function renderIdentity(state) {
     .map((model) => `<option value="${esc(model.id)}"${model.id === state.model ? ' selected' : ''}>${esc(model.label)}</option>`)
     .join('');
   conductorModelSelect.disabled = state.busy || conductorBusy;
+  const effortPicker = conductorEffortSelect.closest('.effort-picker');
+  const efforts = state.efforts ?? [];
+  effortPicker.hidden = efforts.length === 0;
+  conductorEffortSelect.innerHTML = efforts
+    .map((effort) => `<option value="${esc(effort.id)}"${effort.id === state.effort ? ' selected' : ''}>${esc(effort.label)}</option>`)
+    .join('');
+  conductorEffortSelect.disabled = efforts.length === 0 || state.busy || conductorBusy;
 }
 
 identitySwitchEl.addEventListener('click', async (event) => {
@@ -157,6 +167,25 @@ conductorModelSelect.addEventListener('change', async () => {
   if (response.ok) renderIdentity(state);
   else {
     addChatMessage('system', `model switch failed: ${state.error ?? response.status}`);
+    const current = await fetch('/api/conductor/identity').then((result) => result.json());
+    renderIdentity(current);
+  }
+});
+
+conductorEffortSelect.addEventListener('change', async () => {
+  if (conductorBusy) return;
+  conductorEffortSelect.disabled = true;
+  conductorModelSelect.disabled = true;
+  for (const option of identitySwitchEl.querySelectorAll('button')) option.disabled = true;
+  const response = await fetch('/api/conductor/effort', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ effort: conductorEffortSelect.value }),
+  });
+  const state = await response.json().catch(() => ({}));
+  if (response.ok) renderIdentity(state);
+  else {
+    addChatMessage('system', `effort switch failed: ${state.error ?? response.status}`);
     const current = await fetch('/api/conductor/identity').then((result) => result.json());
     renderIdentity(current);
   }
@@ -348,6 +377,7 @@ function setThinking(on) {
   chatButton.textContent = on ? '…' : 'Send';
   for (const option of identitySwitchEl.querySelectorAll('button')) option.disabled = on;
   conductorModelSelect.disabled = on;
+  conductorEffortSelect.disabled = on;
   resetBtn.disabled = on;
 }
 

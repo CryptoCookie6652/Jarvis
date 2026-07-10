@@ -40,7 +40,9 @@ The Conductor header has a live two-way identity switch:
 
 The adjacent model selector lets you change versions at runtime. Fable offers the installed Claude aliases (`fable`, `opus`, and `sonnet`); Sol offers the locally available Codex catalog from GPT-5.6-Sol through GPT-5.3-Codex-Spark.
 
-Each identity-model pair keeps an independent resumable session. When you switch identity or model, Jarvis carries recent shared conversation into the newly active session, so you can continue without restarting the server or repeating context. Active choices persist across restarts.
+The effort selector adapts to the active model. Claude exposes `low` through `max`; Codex shows only the levels reported by that model's local catalog, including `ultra` where supported.
+
+Each identity-model-effort combination keeps an independent resumable session. When you switch identity, model, or effort, Jarvis carries recent shared conversation into the newly active session, so you can continue without restarting the server or repeating context. Active choices persist across restarts.
 
 ## Important paths
 

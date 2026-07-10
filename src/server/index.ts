@@ -126,6 +126,18 @@ const server = createServer(async (req, res) => {
       }
     }
 
+    if (url.pathname === '/api/conductor/effort' && req.method === 'POST') {
+      if (conductor.isBusy()) return json(res, { error: 'busy' }, 409);
+      const body = await readBody(req);
+      const effort = typeof body.effort === 'string' ? body.effort.trim() : '';
+      if (!effort) return json(res, { error: 'effort required' }, 400);
+      try {
+        return json(res, conductor.switchEffort(effort));
+      } catch (err) {
+        return json(res, { error: String(err) }, 400);
+      }
+    }
+
     if (url.pathname === '/api/conductor/say' && req.method === 'POST') {
       const body = await readBody(req);
       const text = typeof body.text === 'string' ? body.text.trim() : '';
